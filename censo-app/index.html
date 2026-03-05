@@ -470,7 +470,7 @@
         try {
           if (lowerName.endsWith('.xlsx')) {
             if (typeof XLSX === 'undefined') {
-              throw new Error('No se pudo inicializar el lector XLSX local.');
+              throw new Error('Falta la librería XLSX en censo-app/libs/xlsx.full.min.js.');
             }
             const buffer = await loadBinaryFileFromStatic(sourcePath);
             const workbook = XLSX.read(buffer, { type: 'array' });
@@ -528,7 +528,7 @@
 
         if (lowerName.endsWith('.xlsx')) {
           if (typeof XLSX === 'undefined') {
-            throw new Error('No se pudo inicializar el lector XLSX local.');
+            throw new Error('Falta la librería XLSX en censo-app/libs/xlsx.full.min.js.');
           }
           const buffer = await loadBinaryFileFromGithub(sourcePath, token);
           const workbook = XLSX.read(buffer, { type: 'array' });
@@ -649,7 +649,7 @@
         if (xlsxUsers) {
           const sourcePath = xlsxUsers.path || xlsxUsers.name;
           if (typeof XLSX === 'undefined') {
-            throw new Error('No se pudo inicializar el lector XLSX local para usuarios.');
+            throw new Error('Falta la librería XLSX en censo-app/libs/xlsx.full.min.js.');
           }
           const buffer = await loadBinaryFileFromGithub(sourcePath, token);
           const workbook = XLSX.read(buffer, { type: 'array' });
@@ -670,7 +670,7 @@
 
       if (lowerName.endsWith('.xlsx')) {
         if (typeof XLSX === 'undefined') {
-          throw new Error('No se pudo inicializar el lector XLSX local para usuarios.');
+          throw new Error('Falta la librería XLSX en censo-app/libs/xlsx.full.min.js.');
         }
         const buffer = await loadBinaryFileFromGithub(sourcePath, token);
         const workbook = XLSX.read(buffer, { type: 'array' });
@@ -707,7 +707,7 @@
         try {
           if (lowerName.endsWith('.xlsx')) {
             if (typeof XLSX === 'undefined') {
-              throw new Error('No se pudo inicializar el lector XLSX local para usuarios.');
+              throw new Error('Falta la librería XLSX en censo-app/libs/xlsx.full.min.js.');
             }
             const buffer = await loadBinaryFileFromStatic(sourcePath);
             const workbook = XLSX.read(buffer, { type: 'array' });

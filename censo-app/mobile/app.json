@@ -1,0 +1,19 @@
+{
+  "expo": {
+    "name": "Censo Offline",
+    "slug": "censo-offline",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "android": {
+      "package": "com.censo.offline"
+    },
+    "extra": {
+      "apiUrl": "http://TU_SERVIDOR_LOCAL:4000",
+      "apiKey": "CAMBIAR_ESTA_CLAVE"
+    }
+  }
+}

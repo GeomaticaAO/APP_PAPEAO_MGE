@@ -1,0 +1,534 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Demo Censo Offline</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#f7f2f4; margin:0; }
+    .wrap { max-width:760px; margin:24px auto; background:#fff; border-radius:12px; padding:20px; box-shadow:0 2px 12px rgba(0,0,0,.08); }
+    h1 { margin:0 0 6px; }
+    .muted { color:#666; font-size:14px; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:14px; }
+    .full { grid-column:1 / -1; }
+    label { font-size:13px; font-weight:bold; color:#333; display:block; margin-bottom:4px; }
+    input { width:100%; box-sizing:border-box; padding:10px; border:1px solid #cfd6dd; border-radius:8px; }
+    .row { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
+    button { border:0; color:#fff; border-radius:8px; padding:10px 14px; cursor:pointer; font-weight:bold; }
+    .btn-blue { background:#7a1931; }
+    .btn-green { background:#9f2241; }
+    .btn-purple { background:#5c1226; }
+    .btn-gray { background:#4b5563; }
+    .btn-github { background:#111827; }
+    table { width:100%; border-collapse:collapse; margin-top:14px; }
+    th, td { border:1px solid #e5e7eb; padding:8px; font-size:13px; text-align:left; }
+    th { background:#fff1f2; }
+    .pill { display:inline-block; background:#fdf2f8; color:#881337; border-radius:999px; padding:4px 10px; font-size:12px; font-weight:bold; }
+    .ok { color:#065f46; font-weight:bold; }
+    .warn { color:#92400e; font-weight:bold; }
+    .header { display:flex; align-items:center; gap:12px; border-bottom:2px solid #f3d0d8; padding-bottom:10px; }
+    .header img { width:58px; height:58px; object-fit:contain; }
+    .title-main { color:#7a1931; margin:0; font-size:23px; }
+    .subtitle { margin:2px 0 0; font-size:13px; color:#5f5f5f; }
+    .section { margin-top:18px; padding:12px; border:1px solid #ead2d8; border-radius:10px; background:#fffafa; }
+    .section h3 { margin:0 0 8px; color:#7a1931; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <img src="../../logo/logo.png" alt="Logo institucional" onerror="this.style.display='none'" />
+      <div>
+        <h1 class="title-main">PAPE AO - Mujeres Gasto Escencial</h1>
+        <div class="subtitle">Captura y corrección de datos en modo offline</div>
+      </div>
+    </div>
+    <div class="muted" style="margin-top:8px">Funciona automático: intenta leer la base por defecto en GitHub, guarda copia local y trabaja offline.</div>
+
+    <div style="margin-top:10px" class="pill" id="pendingCounter">Pendientes por enviar: 0</div>
+
+    <div class="grid">
+      <div class="full">
+        <label>Clave Vivienda</label>
+        <input id="clave_vivienda" placeholder="Ej: VIV-0001" />
+      </div>
+
+      <div class="full row" style="margin-top:0">
+        <button class="btn-blue" onclick="buscarClave()">Buscar clave vivienda</button>
+        <button class="btn-gray" onclick="sincronizarAutomatico()">Sincronizar ahora</button>
+      </div>
+
+      <div><label>Nombre</label><input id="nombre" /></div>
+      <div><label>Edad</label><input id="edad" type="number" /></div>
+      <div><label>Teléfono</label><input id="telefono" /></div>
+      <div><label>Calle</label><input id="calle" /></div>
+      <div><label>Número</label><input id="numero" /></div>
+      <div><label>Manzana</label><input id="manzana" /></div>
+      <div><label>Lote</label><input id="lote" /></div>
+      <div><label>CURP</label><input id="curp" /></div>
+    </div>
+
+    <div class="row">
+      <button class="btn-green" onclick="guardarOffline()">Guardar offline</button>
+      <button class="btn-purple" onclick="sincronizarDemo()">Sincronizar (demo)</button>
+      <button class="btn-gray" onclick="descargarJSON()">Descargar JSON</button>
+    </div>
+
+    <div class="section">
+      <h3>Configuración de GitHub (una sola vez por celular)</h3>
+      <div class="muted">El envío es automático cuando haya WiFi. Cada celular sube su propio archivo CSV para evitar choques entre 40 usuarios.</div>
+      <div class="grid" style="margin-top:10px">
+        <div><label>Owner</label><input id="ghOwner" value="GeomaticaAO" readonly /></div>
+        <div><label>Repositorio</label><input id="ghRepo" value="APP_PAPEAO_MGE" readonly /></div>
+        <div><label>Branch</label><input id="ghBranch" value="main" readonly /></div>
+        <div><label>Carpeta destino</label><input id="ghFolder" value="capturas" readonly /></div>
+        <div class="full"><label>Token GitHub (se guarda local en este celular/navegador)</label><input id="ghToken" type="password" placeholder="ghp_..." /></div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn-github" onclick="guardarTokenGithub()">Guardar token</button>
+      </div>
+    </div>
+
+    <div id="estado" class="muted" style="margin-top:10px"></div>
+
+    <h3 style="margin:18px 0 8px">Registros pendientes</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>Clave</th><th>Nombre</th><th>Edad</th><th>Manzana</th><th>Fecha</th>
+        </tr>
+      </thead>
+      <tbody id="tablaPendientes"></tbody>
+    </table>
+  </div>
+
+  <script>
+    const KEY_PENDING = 'demo_censo_pending';
+    const KEY_BASE_CACHE = 'demo_base_cache_v1';
+    const KEY_GH_TOKEN = 'demo_github_token';
+    const BASE_OWNER = 'GeomaticaAO';
+    const BASE_REPO = 'APP_PAPEAO_MGE';
+    const BASE_BRANCH = 'main';
+    const BASE_FILE_CANDIDATES = [
+      'TOTAL_JEFAS_FAMILIA.json',
+      'TOTAL_JEFAS FAMILIA.json',
+      'base/TOTAL_JEFAS_FAMILIA.json',
+      'base/TOTAL_JEFAS FAMILIA.json',
+      'TOTAL_JEFAS_FAMILIA.csv',
+      'TOTAL_JEFAS FAMILIA.csv',
+      'base/TOTAL_JEFAS_FAMILIA.csv',
+      'base/TOTAL_JEFAS FAMILIA.csv'
+    ];
+
+    let baseCenso = {
+      'VIV-0001': { nombre:'MARIA GARCIA', edad:42, telefono:'5551234567', calle:'AV CENTRAL', numero:'120', manzana:'MZ-2', lote:'LT-8', curp:'GARM820101MDFXXX01' },
+      'VIV-0002': { nombre:'JUAN PEREZ', edad:35, telefono:'5559876543', calle:'CALLE NORTE', numero:'52', manzana:'MZ-5', lote:'LT-11', curp:'PEJJ900505HDFXXX09' }
+    };
+
+    function normalizeHeaders(obj) {
+      const out = {};
+      Object.keys(obj).forEach((k) => {
+        out[k.toLowerCase().trim()] = obj[k];
+      });
+      return out;
+    }
+
+    function parseCsvLine(line, delimiter) {
+      const cols = [];
+      let current = '';
+      let inQuotes = false;
+
+      for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        const next = line[i + 1];
+
+        if (ch === '"') {
+          if (inQuotes && next === '"') {
+            current += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (ch === delimiter && !inQuotes) {
+          cols.push(current);
+          current = '';
+        } else {
+          current += ch;
+        }
+      }
+      cols.push(current);
+      return cols.map((v) => v.trim());
+    }
+
+    function csvToRows(text) {
+      const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
+      if (!lines.length) return [];
+
+      const delimiter = lines[0].includes(';') ? ';' : ',';
+      const headers = parseCsvLine(lines[0], delimiter);
+      const rows = [];
+
+      for (let i = 1; i < lines.length; i++) {
+        const cols = parseCsvLine(lines[i], delimiter);
+        const row = {};
+        headers.forEach((h, idx) => {
+          row[h] = cols[idx] ?? '';
+        });
+        rows.push(row);
+      }
+      return rows;
+    }
+
+    function rowsToPadron(rows) {
+      const nuevoPadron = {};
+      rows.forEach((raw) => {
+        const key = normalizeHeaders(raw);
+        const clave = String(key['clave_vivienda'] ?? key['clave vivienda'] ?? key['clave'] ?? '').trim();
+        if (!clave) return;
+
+        nuevoPadron[clave] = {
+          nombre: String(key['nombre'] ?? '').trim(),
+          edad: String(key['edad'] ?? '').trim(),
+          telefono: String(key['telefono'] ?? key['teléfono'] ?? '').trim(),
+          calle: String(key['calle'] ?? '').trim(),
+          numero: String(key['numero'] ?? key['número'] ?? '').trim(),
+          manzana: String(key['manzana'] ?? '').trim(),
+          lote: String(key['lote'] ?? '').trim(),
+          curp: String(key['curp'] ?? '').trim()
+        };
+      });
+      return nuevoPadron;
+    }
+
+    function saveBaseCache(padron, source) {
+      localStorage.setItem(KEY_BASE_CACHE, JSON.stringify({
+        padron,
+        source,
+        savedAt: new Date().toISOString()
+      }));
+    }
+
+    function loadBaseCache() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(KEY_BASE_CACHE) || '{}');
+        if (!raw || !raw.padron || !Object.keys(raw.padron).length) return null;
+        return raw;
+      } catch {
+        return null;
+      }
+    }
+
+    function normalizeName(str) {
+      return String(str || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/\s+/g, '_');
+    }
+
+    function githubHeaders(token) {
+      const headers = { 'Accept': 'application/vnd.github+json' };
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+      return headers;
+    }
+
+    async function listGithubPath(path, token) {
+      const cleanPath = path ? `/${encodeURIComponent(path).replace(/%2F/g, '/')}` : '';
+      const url = `https://api.github.com/repos/${BASE_OWNER}/${BASE_REPO}/contents${cleanPath}?ref=${BASE_BRANCH}`;
+      const response = await fetch(url, { headers: githubHeaders(token) });
+      if (!response.ok) return null;
+      const body = await response.json();
+      return Array.isArray(body) ? body : [body];
+    }
+
+    async function loadTextFileFromGithub(path, token) {
+      const apiUrl = `https://api.github.com/repos/${BASE_OWNER}/${BASE_REPO}/contents/${encodeURIComponent(path).replace(/%2F/g, '/')}?ref=${BASE_BRANCH}`;
+      const response = await fetch(apiUrl, { headers: githubHeaders(token) });
+      if (!response.ok) {
+        throw new Error('No se pudo leer archivo base en GitHub.');
+      }
+      const body = await response.json();
+      return decodeURIComponent(escape(atob((body.content || '').replace(/\n/g, ''))));
+    }
+
+    async function tryFetchBaseFromGithub() {
+      const token = getGithubToken();
+      const root = await listGithubPath('', token);
+
+      if (!root) {
+        throw new Error('No se pudo leer el repositorio. Si es privado, guarda token GitHub.');
+      }
+
+      const baseDirExists = root.some((x) => x.type === 'dir' && normalizeName(x.name) === 'base');
+      const baseDir = baseDirExists ? await listGithubPath('base', token) : [];
+      const allFiles = [...root, ...(baseDir || [])].filter((x) => x.type === 'file');
+
+      const preferred = [];
+      for (const candidate of BASE_FILE_CANDIDATES) {
+        preferred.push(normalizeName(candidate.split('/').pop()));
+      }
+
+      const fileHit = allFiles.find((file) => {
+        const nm = normalizeName(file.name);
+        return preferred.includes(nm);
+      }) || allFiles.find((file) => {
+        const nm = normalizeName(file.name);
+        return (nm.includes('total_jefas') && nm.includes('familia') && (nm.endsWith('.csv') || nm.endsWith('.json')));
+      });
+
+      if (fileHit) {
+        const sourcePath = fileHit.path || fileHit.name;
+        const content = await loadTextFileFromGithub(sourcePath, token);
+
+        if (normalizeName(fileHit.name).endsWith('.json')) {
+          const data = JSON.parse(content);
+          const rows = Array.isArray(data) ? data : Object.values(data);
+          const padron = rowsToPadron(rows);
+          if (Object.keys(padron).length) return { padron, source: sourcePath };
+        }
+
+        if (normalizeName(fileHit.name).endsWith('.csv')) {
+          const rows = csvToRows(content);
+          const padron = rowsToPadron(rows);
+          if (Object.keys(padron).length) return { padron, source: sourcePath };
+        }
+      }
+
+      const xlsxFound = allFiles.find((file) => {
+        const nm = normalizeName(file.name);
+        return nm.includes('total_jefas') && nm.includes('familia') && nm.endsWith('.xlsx');
+      });
+
+      if (xlsxFound) {
+        throw new Error('Detecté el XLSX, pero aún no existe TOTAL_JEFAS_FAMILIA.csv/.json. Ejecuta el workflow "Preparar Base Desde XLSX" en GitHub Actions.');
+      }
+
+      throw new Error('No se encontró base por defecto en GitHub (CSV/JSON).');
+    }
+
+    async function cargarBaseAutomatica() {
+      const cached = loadBaseCache();
+      if (cached) {
+        baseCenso = cached.padron;
+        estado(`Base local lista (${Object.keys(baseCenso).length} claves).`);
+      }
+
+      try {
+        const remote = await tryFetchBaseFromGithub();
+        baseCenso = remote.padron;
+        saveBaseCache(baseCenso, remote.source);
+        estado(`Base actualizada desde GitHub (${Object.keys(baseCenso).length} claves).`);
+      } catch (error) {
+        if (!cached) {
+          estado('Sin base disponible: ' + error.message, false);
+        }
+      }
+    }
+
+    function getPending() {
+      try { return JSON.parse(localStorage.getItem(KEY_PENDING) || '[]'); }
+      catch { return []; }
+    }
+
+    function setPending(items) {
+      localStorage.setItem(KEY_PENDING, JSON.stringify(items));
+      pintar();
+    }
+
+    function valor(id) { return document.getElementById(id).value.trim(); }
+    function setValor(id, v) { document.getElementById(id).value = v ?? ''; }
+
+    function estado(msg, ok=true) {
+      const el = document.getElementById('estado');
+      el.className = ok ? 'ok' : 'warn';
+      el.textContent = msg;
+    }
+
+    function buscarClave() {
+      const clave = valor('clave_vivienda');
+      if (!clave) return estado('Ingresa la clave vivienda.', false);
+      const hit = baseCenso[clave];
+      if (!hit) return estado('Clave no encontrada en la base.', false);
+
+      setValor('nombre', hit.nombre);
+      setValor('edad', hit.edad);
+      setValor('telefono', hit.telefono);
+      setValor('calle', hit.calle);
+      setValor('numero', hit.numero);
+      setValor('manzana', hit.manzana);
+      setValor('lote', hit.lote);
+      setValor('curp', hit.curp);
+      estado('Datos cargados desde censo base.');
+    }
+
+    function guardarOffline() {
+      const clave = valor('clave_vivienda');
+      if (!clave) return estado('La clave vivienda es obligatoria.', false);
+
+      const item = {
+        local_id: Date.now() + '-' + Math.random().toString(36).slice(2,7),
+        clave_vivienda: clave,
+        nombre: valor('nombre'),
+        edad: valor('edad') ? Number(valor('edad')) : null,
+        telefono: valor('telefono'),
+        calle: valor('calle'),
+        numero: valor('numero'),
+        manzana: valor('manzana'),
+        lote: valor('lote'),
+        curp: valor('curp'),
+        fecha_captura: new Date().toISOString()
+      };
+
+      const items = getPending();
+      items.push(item);
+      setPending(items);
+      estado('Registro guardado offline en este navegador.');
+
+      if (navigator.onLine) {
+        sincronizarAutomatico();
+      }
+    }
+
+    function sincronizarDemo() {
+      const items = getPending();
+      if (!items.length) return estado('No hay pendientes por sincronizar.', false);
+      localStorage.setItem('demo_censo_enviados', JSON.stringify([...(JSON.parse(localStorage.getItem('demo_censo_enviados')||'[]')), ...items]));
+      setPending([]);
+      estado('Sincronización demo completada. Pendientes enviados.');
+    }
+
+    function csvEscape(value) {
+      const str = String(value ?? '');
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return '"' + str.replaceAll('"', '""') + '"';
+      }
+      return str;
+    }
+
+    function itemsToCsv(items) {
+      const headers = ['local_id','clave_vivienda','nombre','edad','telefono','calle','numero','manzana','lote','curp','fecha_captura'];
+      const lines = [headers.join(',')];
+      items.forEach((item) => {
+        const line = headers.map((h) => csvEscape(item[h])).join(',');
+        lines.push(line);
+      });
+      return lines.join('\n');
+    }
+
+    function getValue(id) {
+      return document.getElementById(id).value.trim();
+    }
+
+    function guardarTokenGithub() {
+      const token = getValue('ghToken');
+      if (!token) return estado('Ingresa el token para guardarlo.', false);
+      localStorage.setItem(KEY_GH_TOKEN, token);
+      estado('Token guardado en este navegador/celular.');
+      sincronizarAutomatico();
+    }
+
+    function getGithubToken() {
+      const inputToken = getValue('ghToken');
+      if (inputToken) return inputToken;
+      return localStorage.getItem(KEY_GH_TOKEN) || '';
+    }
+
+    async function enviarGithubCSV() {
+      const items = getPending();
+      if (!items.length) return estado('No hay pendientes para enviar a GitHub.', false);
+
+      const owner = BASE_OWNER;
+      const repo = BASE_REPO;
+      const branch = BASE_BRANCH;
+      const folder = getValue('ghFolder') || 'capturas';
+      const token = getGithubToken();
+
+      if (!owner || !repo || !token) {
+        return estado('Falta token GitHub para sincronizar.', false);
+      }
+
+      try {
+        const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const deviceId = localStorage.getItem('demo_device_id') || ('device-' + Math.random().toString(36).slice(2, 8));
+        localStorage.setItem('demo_device_id', deviceId);
+
+        const csv = itemsToCsv(items);
+        const filePath = `${folder}/${deviceId}/${stamp}.csv`;
+        const contentB64 = btoa(unescape(encodeURIComponent(csv)));
+
+        const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`, {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/vnd.github+json',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            message: `Carga de censo ${deviceId} ${stamp}`,
+            content: contentB64,
+            branch
+          })
+        });
+
+        if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          throw new Error(err.message || `Error HTTP ${response.status}`);
+        }
+
+        localStorage.setItem('demo_censo_enviados', JSON.stringify([...(JSON.parse(localStorage.getItem('demo_censo_enviados')||'[]')), ...items]));
+        setPending([]);
+        estado(`Envío correcto a GitHub: ${filePath}`);
+      } catch (error) {
+        estado('Error al enviar a GitHub: ' + error.message, false);
+      }
+    }
+
+    async function sincronizarAutomatico() {
+      if (!navigator.onLine) return;
+      const items = getPending();
+      if (!items.length) return;
+      await enviarGithubCSV();
+    }
+
+    function descargarJSON() {
+      const all = {
+        pendientes: getPending(),
+        enviados_demo: JSON.parse(localStorage.getItem('demo_censo_enviados') || '[]')
+      };
+      const blob = new Blob([JSON.stringify(all, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'censo_demo_export.json';
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    function pintar() {
+      const items = getPending();
+      document.getElementById('pendingCounter').textContent = `Pendientes por enviar: ${items.length}`;
+      const tb = document.getElementById('tablaPendientes');
+      tb.innerHTML = items.map(i => `
+        <tr>
+          <td>${i.clave_vivienda || ''}</td>
+          <td>${i.nombre || ''}</td>
+          <td>${i.edad ?? ''}</td>
+          <td>${i.manzana || ''}</td>
+          <td>${new Date(i.fecha_captura).toLocaleString()}</td>
+        </tr>
+      `).join('');
+    }
+
+    const savedToken = localStorage.getItem(KEY_GH_TOKEN) || '';
+    if (savedToken) {
+      document.getElementById('ghToken').value = savedToken;
+    }
+
+    pintar();
+    cargarBaseAutomatica();
+    window.addEventListener('online', sincronizarAutomatico);
+    setInterval(sincronizarAutomatico, 45000);
+    sincronizarAutomatico();
+  </script>
+</body>
+</html>

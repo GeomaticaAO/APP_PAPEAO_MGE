@@ -29,9 +29,10 @@
     .header { display:flex; align-items:center; gap:12px; border-bottom:2px solid #f3d0d8; padding-bottom:10px; }
     .header img { width:58px; height:58px; object-fit:contain; }
     .title-main { color:#7a1931; margin:0; font-size:23px; }
-    .subtitle { margin:2px 0 0; font-size:13px; color:#5f5f5f; }
     .section { margin-top:18px; padding:12px; border:1px solid #ead2d8; border-radius:10px; background:#fffafa; }
     .section h3 { margin:0 0 8px; color:#7a1931; }
+    .admin-summary { cursor:pointer; font-weight:bold; color:#7a1931; }
+    .locked { color:#7f1d1d; font-weight:bold; }
   </style>
 </head>
 <body>
@@ -40,10 +41,27 @@
       <img src="../../logo/logo.png" alt="Logo institucional" onerror="this.style.display='none'" />
       <div>
         <h1 class="title-main">PAPE AO - Mujeres Gasto Escencial</h1>
-        <div class="subtitle">Captura y corrección de datos en modo offline</div>
       </div>
     </div>
-    <div class="muted" style="margin-top:8px">Funciona automático: intenta leer la base por defecto en GitHub, guarda copia local y trabaja offline.</div>
+
+    <div class="section" style="margin-top:12px">
+      <h3>Acceso</h3>
+      <div class="grid" style="margin-top:10px">
+        <div>
+          <label>Nombre de usuario</label>
+          <input id="auth_nombre" list="usuariosList" placeholder="Escribe tu nombre" oninput="autocompletarNombreUsuario()" />
+          <datalist id="usuariosList"></datalist>
+        </div>
+        <div>
+          <label>Clave de acceso</label>
+          <input id="auth_clave" type="password" placeholder="Ingresa tu clave" />
+        </div>
+      </div>
+      <div class="row" style="margin-top:10px">
+        <button class="btn-blue" onclick="validarAcceso()">Validar identidad</button>
+      </div>
+      <div id="authEstado" class="locked" style="margin-top:6px">Sin validar identidad</div>
+    </div>
 
     <div style="margin-top:10px" class="pill" id="pendingCounter">Pendientes por enviar: 0</div>
 
@@ -63,20 +81,22 @@
       <div><label>Teléfono</label><input id="telefono" /></div>
       <div><label>Calle</label><input id="calle" /></div>
       <div><label>Número</label><input id="numero" /></div>
-      <div><label>Manzana</label><input id="manzana" /></div>
+      <div><label>Manzana INEGI (base)</label><input id="manzana_inegi" readonly /></div>
+      <div><label>Manzana (dirección/campo)</label><input id="manzana" /></div>
       <div><label>Lote</label><input id="lote" /></div>
       <div><label>CURP</label><input id="curp" /></div>
+      <div class="full"><label>Dirección base</label><input id="direccion_base" readonly /></div>
     </div>
 
     <div class="row">
       <button class="btn-green" onclick="guardarOffline()">Guardar offline</button>
-      <button class="btn-purple" onclick="sincronizarDemo()">Sincronizar (demo)</button>
+      <button class="btn-purple" onclick="sincronizarAutomatico()">Sincronizar ahora</button>
       <button class="btn-gray" onclick="descargarJSON()">Descargar JSON</button>
     </div>
 
-    <div class="section">
-      <h3>Configuración de GitHub (una sola vez por celular)</h3>
-      <div class="muted">El envío es automático cuando haya WiFi. Cada celular sube su propio archivo CSV para evitar choques entre 40 usuarios.</div>
+    <details class="section">
+      <summary class="admin-summary">Configuración técnica (solo administrador)</summary>
+      <div class="muted">El envío es automático cuando haya WiFi. Cada celular sube su propio archivo CSV para evitar cruces entre 40 usuarios.</div>
       <div class="grid" style="margin-top:10px">
         <div><label>Owner</label><input id="ghOwner" value="GeomaticaAO" readonly /></div>
         <div><label>Repositorio</label><input id="ghRepo" value="APP_PAPEAO_MGE" readonly /></div>
@@ -87,7 +107,7 @@
       <div class="row" style="margin-top:10px">
         <button class="btn-github" onclick="guardarTokenGithub()">Guardar token</button>
       </div>
-    </div>
+    </details>
 
     <div id="estado" class="muted" style="margin-top:10px"></div>
 
@@ -105,10 +125,14 @@
   <script>
     const KEY_PENDING = 'demo_censo_pending';
     const KEY_BASE_CACHE = 'demo_base_cache_v1';
+    const KEY_USERS_CACHE = 'demo_users_cache_v1';
     const KEY_GH_TOKEN = 'demo_github_token';
     const BASE_OWNER = 'GeomaticaAO';
     const BASE_REPO = 'APP_PAPEAO_MGE';
     const BASE_BRANCH = 'main';
+    const BRANCH_CANDIDATES = ['main', 'master'];
+    const WF_BASE_XLSX = 'preparar-base-desde-xlsx.yml';
+    const WF_USERS_XLSX = 'preparar-usuarios-desde-xlsx.yml';
     const BASE_FILE_CANDIDATES = [
       'TOTAL_JEFAS_FAMILIA.json',
       'TOTAL_JEFAS FAMILIA.json',
@@ -119,11 +143,35 @@
       'base/TOTAL_JEFAS_FAMILIA.csv',
       'base/TOTAL_JEFAS FAMILIA.csv'
     ];
+    const USERS_FILE_CANDIDATES = [
+      'USUARIOS.json',
+      'USUARIOS.csv',
+      'USUARIOS_CAPTURA.json',
+      'USUARIOS_CAPTURA.csv',
+      'CATALOGO_USUARIOS.json',
+      'CATALOGO_USUARIOS.csv',
+      'base/USUARIOS_CAPTURA.json',
+      'base/USUARIOS_CAPTURA.csv'
+    ];
 
     let baseCenso = {
       'VIV-0001': { nombre:'MARIA GARCIA', edad:42, telefono:'5551234567', calle:'AV CENTRAL', numero:'120', manzana:'MZ-2', lote:'LT-8', curp:'GARM820101MDFXXX01' },
       'VIV-0002': { nombre:'JUAN PEREZ', edad:35, telefono:'5559876543', calle:'CALLE NORTE', numero:'52', manzana:'MZ-5', lote:'LT-11', curp:'PEJJ900505HDFXXX09' }
     };
+    let usersCatalog = [];
+    let repoFilesCache = null;
+    let repoBranchInUse = BASE_BRANCH;
+    let sessionUser = null;
+
+    function firstValue(obj, keys) {
+      for (const key of keys) {
+        const value = obj[key];
+        if (value !== undefined && value !== null && String(value).trim() !== '') {
+          return String(value).trim();
+        }
+      }
+      return '';
+    }
 
     function normalizeHeaders(obj) {
       const out = {};
@@ -183,18 +231,22 @@
       const nuevoPadron = {};
       rows.forEach((raw) => {
         const key = normalizeHeaders(raw);
-        const clave = String(key['clave_vivienda'] ?? key['clave vivienda'] ?? key['clave'] ?? '').trim();
+        const clave = firstValue(key, ['hogares con jefas', 'clave_vivienda', 'clave vivienda', 'clave']);
         if (!clave) return;
 
         nuevoPadron[clave] = {
-          nombre: String(key['nombre'] ?? '').trim(),
-          edad: String(key['edad'] ?? '').trim(),
-          telefono: String(key['telefono'] ?? key['teléfono'] ?? '').trim(),
-          calle: String(key['calle'] ?? '').trim(),
-          numero: String(key['numero'] ?? key['número'] ?? '').trim(),
-          manzana: String(key['manzana'] ?? '').trim(),
-          lote: String(key['lote'] ?? '').trim(),
-          curp: String(key['curp'] ?? '').trim()
+          clave_vivienda: clave,
+          nombre: firstValue(key, ['nombre de la jefa', 'nombre', 'jefa de familia']),
+          edad: firstValue(key, ['edad']),
+          telefono: firstValue(key, ['telefono', 'teléfono']),
+          calle: firstValue(key, ['calle']),
+          numero: firstValue(key, ['numero', 'número']),
+          manzana_inegi: firstValue(key, ['manzana inegi', 'manzana_inegi', 'manzana']),
+          manzana: firstValue(key, ['manzana direccion', 'manzana_direccion']),
+          lote: firstValue(key, ['lote']),
+          curp: firstValue(key, ['curp']),
+          direccion_base: firstValue(key, ['direccion', 'dirección']),
+          raw_base: raw
         };
       });
       return nuevoPadron;
@@ -208,10 +260,28 @@
       }));
     }
 
+    function saveUsersCache(users, source) {
+      localStorage.setItem(KEY_USERS_CACHE, JSON.stringify({
+        users,
+        source,
+        savedAt: new Date().toISOString()
+      }));
+    }
+
     function loadBaseCache() {
       try {
         const raw = JSON.parse(localStorage.getItem(KEY_BASE_CACHE) || '{}');
         if (!raw || !raw.padron || !Object.keys(raw.padron).length) return null;
+        return raw;
+      } catch {
+        return null;
+      }
+    }
+
+    function loadUsersCache() {
+      try {
+        const raw = JSON.parse(localStorage.getItem(KEY_USERS_CACHE) || '{}');
+        if (!raw || !Array.isArray(raw.users) || !raw.users.length) return null;
         return raw;
       } catch {
         return null;
@@ -241,8 +311,39 @@
       return Array.isArray(body) ? body : [body];
     }
 
+    async function getRepoFiles(token) {
+      if (repoFilesCache) return repoFilesCache;
+
+      for (const branch of BRANCH_CANDIDATES) {
+        const url = `https://api.github.com/repos/${BASE_OWNER}/${BASE_REPO}/git/trees/${branch}?recursive=1`;
+        const response = await fetch(url, { headers: githubHeaders(token) });
+        if (!response.ok) continue;
+
+        const body = await response.json();
+        const tree = Array.isArray(body.tree) ? body.tree : [];
+        const files = tree
+          .filter((item) => item.type === 'blob')
+          .map((item) => ({
+            type: 'file',
+            path: item.path,
+            name: String(item.path).split('/').pop()
+          }));
+
+        if (files.length) {
+          repoBranchInUse = branch;
+          repoFilesCache = files;
+          return repoFilesCache;
+        }
+      }
+
+      const root = await listGithubPath('', token);
+      if (!root) return null;
+      repoFilesCache = root.filter((x) => x.type === 'file');
+      return repoFilesCache;
+    }
+
     async function loadTextFileFromGithub(path, token) {
-      const apiUrl = `https://api.github.com/repos/${BASE_OWNER}/${BASE_REPO}/contents/${encodeURIComponent(path).replace(/%2F/g, '/')}?ref=${BASE_BRANCH}`;
+      const apiUrl = `https://api.github.com/repos/${BASE_OWNER}/${BASE_REPO}/contents/${encodeURIComponent(path).replace(/%2F/g, '/')}?ref=${repoBranchInUse}`;
       const response = await fetch(apiUrl, { headers: githubHeaders(token) });
       if (!response.ok) {
         throw new Error('No se pudo leer archivo base en GitHub.');
@@ -251,17 +352,26 @@
       return decodeURIComponent(escape(atob((body.content || '').replace(/\n/g, ''))));
     }
 
+    async function dispatchWorkflow(workflowFile, token) {
+      if (!token) return false;
+      const url = `https://api.github.com/repos/${BASE_OWNER}/${BASE_REPO}/actions/workflows/${workflowFile}/dispatches`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          ...githubHeaders(token),
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ ref: repoBranchInUse })
+      });
+      return response.status === 204;
+    }
+
     async function tryFetchBaseFromGithub() {
       const token = getGithubToken();
-      const root = await listGithubPath('', token);
-
-      if (!root) {
+      const allFiles = await getRepoFiles(token);
+      if (!allFiles) {
         throw new Error('No se pudo leer el repositorio. Si es privado, guarda token GitHub.');
       }
-
-      const baseDirExists = root.some((x) => x.type === 'dir' && normalizeName(x.name) === 'base');
-      const baseDir = baseDirExists ? await listGithubPath('base', token) : [];
-      const allFiles = [...root, ...(baseDir || [])].filter((x) => x.type === 'file');
 
       const preferred = [];
       for (const candidate of BASE_FILE_CANDIDATES) {
@@ -300,10 +410,153 @@
       });
 
       if (xlsxFound) {
-        throw new Error('Detecté el XLSX, pero aún no existe TOTAL_JEFAS_FAMILIA.csv/.json. Ejecuta el workflow "Preparar Base Desde XLSX" en GitHub Actions.');
+        const launched = await dispatchWorkflow(WF_BASE_XLSX, token);
+        if (launched) {
+          throw new Error('Detecté TOTAL_JEFAS FAMILIA.xlsx y lancé la conversión automática. Espera 1-2 minutos y recarga la app.');
+        }
+        throw new Error('Detecté TOTAL_JEFAS FAMILIA.xlsx, pero falta TOTAL_JEFAS_FAMILIA.csv/.json. Guarda token y verifica que exista el workflow preparar-base-desde-xlsx.yml en tu repo.');
       }
 
       throw new Error('No se encontró base por defecto en GitHub (CSV/JSON).');
+    }
+
+    function rowsToUsers(rows) {
+      const users = [];
+      rows.forEach((raw) => {
+        const key = normalizeHeaders(raw);
+        const nombre = firstValue(key, ['nombre', 'usuario', 'capturista', 'nombre_usuario']);
+        const telefono = firstValue(key, ['telefono', 'teléfono', 'celular', 'telefono_usuario']);
+        const clave = firstValue(key, ['clave', 'clave_acceso', 'password', 'pin']);
+
+        if (!nombre) return;
+        users.push({ nombre, telefono, clave });
+      });
+
+      const unique = [];
+      const seen = new Set();
+      for (const user of users) {
+        const k = normalizeName(user.nombre);
+        if (seen.has(k)) continue;
+        seen.add(k);
+        unique.push(user);
+      }
+      return unique;
+    }
+
+    function renderUsersDatalist() {
+      const dl = document.getElementById('usuariosList');
+      dl.innerHTML = usersCatalog.map((u) => `<option value="${u.nombre}"></option>`).join('');
+    }
+
+    function autocompletarNombreUsuario() {
+      const nombre = valor('auth_nombre');
+      if (!nombre) return;
+      const exact = usersCatalog.find((u) => normalizeName(u.nombre) === normalizeName(nombre));
+      if (exact) return;
+
+      const partial = usersCatalog.find((u) => normalizeName(u.nombre).startsWith(normalizeName(nombre)));
+      if (partial) {
+        setValor('auth_nombre', partial.nombre);
+      }
+    }
+
+    function ensureAuthenticated(showMessage = true) {
+      if (sessionUser) return true;
+      if (showMessage) estado('Valida primero tu identidad (nombre + clave).', false);
+      return false;
+    }
+
+    function validarAcceso() {
+      const nombre = valor('auth_nombre');
+      const clave = valor('auth_clave');
+      if (!nombre || !clave) {
+        estado('Ingresa nombre y clave de acceso.', false);
+        return;
+      }
+
+      const user = usersCatalog.find((u) => normalizeName(u.nombre) === normalizeName(nombre));
+      if (!user || String(user.clave || '') !== clave) {
+        document.getElementById('authEstado').textContent = 'Identidad no validada';
+        document.getElementById('authEstado').className = 'warn';
+        estado('Nombre o clave incorrectos.', false);
+        return;
+      }
+
+      sessionUser = user;
+      setValor('auth_nombre', user.nombre);
+      document.getElementById('authEstado').textContent = `Identidad validada: ${user.nombre}`;
+      document.getElementById('authEstado').className = 'ok';
+      estado('Acceso validado. Ya puedes consultar y capturar.');
+      sincronizarAutomatico();
+    }
+
+    async function tryFetchUsersFromGithub() {
+      const token = getGithubToken();
+      const allFiles = await getRepoFiles(token);
+      if (!allFiles) {
+        throw new Error('No se pudo leer repositorio para catálogo de usuarios.');
+      }
+
+      const preferred = USERS_FILE_CANDIDATES.map((x) => normalizeName(x.split('/').pop()));
+      const fileHit = allFiles.find((file) => preferred.includes(normalizeName(file.name)))
+        || allFiles.find((file) => {
+          const nm = normalizeName(file.name);
+          return (nm.includes('usuario') || nm.includes('capturista')) && (nm.endsWith('.csv') || nm.endsWith('.json'));
+        });
+
+      if (!fileHit) {
+        const xlsxUsers = allFiles.find((file) => {
+          const nm = normalizeName(file.name);
+          return nm.includes('usuarios') && nm.endsWith('.xlsx');
+        });
+
+        if (xlsxUsers) {
+          const launched = await dispatchWorkflow(WF_USERS_XLSX, token);
+          if (launched) {
+            throw new Error('Detecté USUARIOS.xlsx y lancé la conversión automática. Espera 1-2 minutos y recarga la app.');
+          }
+          throw new Error('Detecté USUARIOS.xlsx, pero falta USUARIOS.csv/.json. Guarda token y verifica que exista el workflow preparar-usuarios-desde-xlsx.yml en tu repo.');
+        }
+
+        throw new Error('No se encontró catálogo de usuarios (CSV/JSON).');
+      }
+
+      const sourcePath = fileHit.path || fileHit.name;
+      const content = await loadTextFileFromGithub(sourcePath, token);
+
+      let rows = [];
+      if (normalizeName(fileHit.name).endsWith('.json')) {
+        const data = JSON.parse(content);
+        rows = Array.isArray(data) ? data : Object.values(data);
+      } else {
+        rows = csvToRows(content);
+      }
+
+      const users = rowsToUsers(rows);
+      if (!users.length) {
+        throw new Error('Catálogo encontrado pero sin columnas de nombre/teléfono válidas.');
+      }
+
+      return { users, source: sourcePath };
+    }
+
+    async function cargarUsuariosAutomatica() {
+      const cached = loadUsersCache();
+      if (cached) {
+        usersCatalog = cached.users;
+        renderUsersDatalist();
+      }
+
+      try {
+        const remote = await tryFetchUsersFromGithub();
+        usersCatalog = remote.users;
+        saveUsersCache(usersCatalog, remote.source);
+        renderUsersDatalist();
+      } catch (error) {
+        if (!cached) {
+          estado('Sin catálogo de capturistas: ' + error.message, false);
+        }
+      }
     }
 
     async function cargarBaseAutomatica() {
@@ -345,6 +598,7 @@
     }
 
     function buscarClave() {
+      if (!ensureAuthenticated()) return;
       const clave = valor('clave_vivienda');
       if (!clave) return estado('Ingresa la clave vivienda.', false);
       const hit = baseCenso[clave];
@@ -355,27 +609,34 @@
       setValor('telefono', hit.telefono);
       setValor('calle', hit.calle);
       setValor('numero', hit.numero);
+      setValor('manzana_inegi', hit.manzana_inegi);
       setValor('manzana', hit.manzana);
       setValor('lote', hit.lote);
       setValor('curp', hit.curp);
+      setValor('direccion_base', hit.direccion_base);
       estado('Datos cargados desde censo base.');
     }
 
     function guardarOffline() {
+      if (!ensureAuthenticated()) return;
       const clave = valor('clave_vivienda');
       if (!clave) return estado('La clave vivienda es obligatoria.', false);
 
       const item = {
         local_id: Date.now() + '-' + Math.random().toString(36).slice(2,7),
+        capturista_nombre: sessionUser.nombre,
+        capturista_telefono: sessionUser.telefono,
         clave_vivienda: clave,
         nombre: valor('nombre'),
         edad: valor('edad') ? Number(valor('edad')) : null,
         telefono: valor('telefono'),
         calle: valor('calle'),
         numero: valor('numero'),
+        manzana_inegi: valor('manzana_inegi'),
         manzana: valor('manzana'),
         lote: valor('lote'),
         curp: valor('curp'),
+        direccion_base: valor('direccion_base'),
         fecha_captura: new Date().toISOString()
       };
 
@@ -389,14 +650,6 @@
       }
     }
 
-    function sincronizarDemo() {
-      const items = getPending();
-      if (!items.length) return estado('No hay pendientes por sincronizar.', false);
-      localStorage.setItem('demo_censo_enviados', JSON.stringify([...(JSON.parse(localStorage.getItem('demo_censo_enviados')||'[]')), ...items]));
-      setPending([]);
-      estado('Sincronización demo completada. Pendientes enviados.');
-    }
-
     function csvEscape(value) {
       const str = String(value ?? '');
       if (str.includes(',') || str.includes('"') || str.includes('\n')) {
@@ -406,7 +659,7 @@
     }
 
     function itemsToCsv(items) {
-      const headers = ['local_id','clave_vivienda','nombre','edad','telefono','calle','numero','manzana','lote','curp','fecha_captura'];
+      const headers = ['local_id','capturista_nombre','capturista_telefono','clave_vivienda','nombre','edad','telefono','calle','numero','manzana_inegi','manzana','lote','curp','direccion_base','fecha_captura'];
       const lines = [headers.join(',')];
       items.forEach((item) => {
         const line = headers.map((h) => csvEscape(item[h])).join(',');
@@ -439,7 +692,7 @@
 
       const owner = BASE_OWNER;
       const repo = BASE_REPO;
-      const branch = BASE_BRANCH;
+      const branch = repoBranchInUse;
       const folder = getValue('ghFolder') || 'capturas';
       const token = getGithubToken();
 
@@ -451,9 +704,10 @@
         const stamp = new Date().toISOString().replace(/[:.]/g, '-');
         const deviceId = localStorage.getItem('demo_device_id') || ('device-' + Math.random().toString(36).slice(2, 8));
         localStorage.setItem('demo_device_id', deviceId);
+        const capturista = normalizeName(items[0]?.capturista_nombre || 'sin_capturista');
 
         const csv = itemsToCsv(items);
-        const filePath = `${folder}/${deviceId}/${stamp}.csv`;
+        const filePath = `${folder}/${capturista}/${deviceId}/${stamp}.csv`;
         const contentB64 = btoa(unescape(encodeURIComponent(csv)));
 
         const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${filePath}`, {
@@ -484,6 +738,7 @@
     }
 
     async function sincronizarAutomatico() {
+      if (!ensureAuthenticated(false)) return;
       if (!navigator.onLine) return;
       const items = getPending();
       if (!items.length) return;
@@ -526,6 +781,7 @@
 
     pintar();
     cargarBaseAutomatica();
+    cargarUsuariosAutomatica();
     window.addEventListener('online', sincronizarAutomatico);
     setInterval(sincronizarAutomatico, 45000);
     sincronizarAutomatico();

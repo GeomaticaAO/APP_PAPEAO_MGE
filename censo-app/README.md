@@ -91,6 +91,23 @@ En este proyecto, la demo web quedó en modo automático:
 - Al detectar internet/WiFi, intenta enviar pendientes automáticamente a `capturas/<device-id>/<fecha>.csv`.
 - El workflow `consolidar-capturas.yml` se ejecuta automáticamente y genera `salidas/CONSOLIDADO_CSV.csv` y `salidas/CONSOLIDADO.xlsx`.
 
+## 6.2) Autenticación de capturistas con USUARIOS.xlsx
+
+- Agrega `USUARIOS.xlsx` en la raíz del repo.
+- El workflow `preparar-usuarios-desde-xlsx.yml` genera `USUARIOS.csv` y `USUARIOS.json` automáticamente.
+- La app pide validación de identidad (nombre + clave) antes de consultar claves de vivienda y capturar.
+
+Columnas esperadas en `USUARIOS.xlsx`:
+- `nombre` (o `usuario` / `capturista`)
+- `telefono` (o `teléfono` / `celular`)
+- `clave` (o `clave_acceso` / `password` / `pin`)
+
+## 6.3) Encabezados base de jefas
+
+- La app usa `Hogares con Jefas` como clave de vivienda.
+- `Manzana` en el XLSX base se interpreta como `Manzana INEGI`.
+- `Direccion` se carga en el campo solo lectura `Dirección base`.
+
 ## 7) Exportar resultados a Excel
 
 Desde `censo-app/backend/`:

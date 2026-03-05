@@ -1,4 +1,4 @@
-const CACHE_NAME = 'papeao-censo-v1';
+const CACHE_NAME = 'papeao-censo-v2';
 const APP_SHELL = [
   './',
   './index.html',
@@ -9,7 +9,14 @@ const APP_SHELL = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))
+    caches.open(CACHE_NAME).then(async (cache) => {
+      for (const asset of APP_SHELL) {
+        try {
+          await cache.add(asset);
+        } catch {
+        }
+      }
+    })
   );
   self.skipWaiting();
 });
@@ -26,6 +33,8 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   if (request.method !== 'GET') return;
+  const requestUrl = new URL(request.url);
+  const isSameOrigin = requestUrl.origin === self.location.origin;
 
   if (request.mode === 'navigate') {
     event.respondWith(
@@ -37,6 +46,10 @@ self.addEventListener('fetch', (event) => {
         })
         .catch(() => caches.match('./index.html'))
     );
+    return;
+  }
+
+  if (!isSameOrigin) {
     return;
   }
 
@@ -52,7 +65,7 @@ self.addEventListener('fetch', (event) => {
           }
           return response;
         })
-        .catch(() => caches.match('./index.html'));
+        .catch(() => Promise.reject(new Error('Network error')));
     })
   );
 });

@@ -1256,6 +1256,21 @@
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
+        const resetRequested = new URLSearchParams(window.location.search).get('reset_cache') === '1';
+        if (resetRequested) {
+          navigator.serviceWorker.getRegistrations()
+            .then((regs) => Promise.all(regs.map((reg) => reg.unregister())))
+            .then(() => caches.keys())
+            .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
+            .then(() => {
+              const cleanUrl = new URL(window.location.href);
+              cleanUrl.searchParams.delete('reset_cache');
+              window.location.replace(cleanUrl.toString());
+            })
+            .catch(() => {});
+          return;
+        }
+
         navigator.serviceWorker.register('./sw.js').catch(() => {});
       });
     }

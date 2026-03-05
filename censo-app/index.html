@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#7a1931" />
+  <link rel="manifest" href="./manifest.webmanifest" />
   <title>Demo Censo Offline</title>
   <style>
     body { font-family: Arial, sans-serif; background:#f7f2f4; margin:0; }
@@ -1251,6 +1253,12 @@
     refreshTokenStatus();
     cargarBaseAutomatica();
     cargarUsuariosAutomatica();
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      });
+    }
   </script>
 </body>
 </html>

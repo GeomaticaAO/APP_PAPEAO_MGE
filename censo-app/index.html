@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#7a1931" />
   <link rel="manifest" href="./manifest.webmanifest" />
-  <title>Demo Censo Offline</title>
+  <title>PAPE AO - Mujeres Gasto Escencial</title>
   <style>
     body { font-family: Arial, sans-serif; background:#f7f2f4; margin:0; }
     .wrap { max-width:760px; margin:24px auto; background:#fff; border-radius:12px; padding:20px; box-shadow:0 2px 12px rgba(0,0,0,.08); }
@@ -136,12 +136,16 @@
 
   <script src="./libs/xlsx.full.min.js"></script>
   <script>
-    const KEY_PENDING = 'demo_censo_pending';
-    const KEY_REEMPLAZADOS_ALL = 'demo_reemplazados_all';
-    const KEY_REEMPLAZADOS_PENDING = 'demo_reemplazados_pending';
-    const KEY_BASE_CACHE = 'demo_base_cache_v1';
-    const KEY_USERS_CACHE = 'demo_users_cache_v1';
-    const KEY_GH_TOKEN = 'demo_gh_write_token';
+    const KEY_PENDING = 'papeao_censo_pending';
+    const KEY_REEMPLAZADOS_ALL = 'papeao_reemplazados_all';
+    const KEY_REEMPLAZADOS_PENDING = 'papeao_reemplazados_pending';
+    const KEY_BASE_CACHE = 'papeao_base_cache_v1';
+    const KEY_USERS_CACHE = 'papeao_users_cache_v1';
+    const KEY_GH_TOKEN = 'papeao_gh_write_token';
+    const KEY_DEVICE_ID = 'papeao_device_id';
+    const KEY_ENVIADOS = 'papeao_censo_enviados';
+    const KEY_SW_MIGRATION = 'papeao_sw_migrated_v3';
+    const KEY_STORAGE_MIGRATION = 'papeao_storage_migrated_v1';
     const GITHUB_WRITE_TOKEN = '';
     const BASE_OWNER = 'GeomaticaAO';
     const BASE_REPO = 'APP_PAPEAO_MGE';
@@ -173,6 +177,32 @@
       'base/USUARIOS_CAPTURA.json',
       'base/USUARIOS_CAPTURA.csv'
     ];
+    const BASE_STATIC_FILE_CANDIDATES = [
+      '../TOTAL_JEFAS_FAMILIA.xlsx',
+      '../TOTAL_JEFAS FAMILIA.xlsx',
+      '../base/TOTAL_JEFAS_FAMILIA.xlsx',
+      '../base/TOTAL_JEFAS FAMILIA.xlsx',
+      '../TOTAL_JEFAS_FAMILIA.json',
+      '../TOTAL_JEFAS FAMILIA.json',
+      '../base/TOTAL_JEFAS_FAMILIA.json',
+      '../base/TOTAL_JEFAS FAMILIA.json',
+      '../TOTAL_JEFAS_FAMILIA.csv',
+      '../TOTAL_JEFAS FAMILIA.csv',
+      '../base/TOTAL_JEFAS_FAMILIA.csv',
+      '../base/TOTAL_JEFAS FAMILIA.csv'
+    ];
+    const USERS_STATIC_FILE_CANDIDATES = [
+      '../USUARIOS.xlsx',
+      '../base/USUARIOS.xlsx',
+      '../USUARIOS.json',
+      '../USUARIOS.csv',
+      '../USUARIOS_CAPTURA.json',
+      '../USUARIOS_CAPTURA.csv',
+      '../CATALOGO_USUARIOS.json',
+      '../CATALOGO_USUARIOS.csv',
+      '../base/USUARIOS_CAPTURA.json',
+      '../base/USUARIOS_CAPTURA.csv'
+    ];
 
     let baseCenso = {
       'VIV-0001': { nombre:'MARIA GARCIA', edad:42, telefono:'5551234567', calle:'AV CENTRAL', numero:'120', manzana:'MZ-2', lote:'LT-8', curp:'GARM820101MDFXXX01' },
@@ -184,6 +214,36 @@
     let sessionUser = null;
     let qrStream = null;
     let qrScanTimer = null;
+
+    function migrateLegacyStorageIfNeeded() {
+      try {
+        if (localStorage.getItem(KEY_STORAGE_MIGRATION) === '1') return;
+
+        const legacyMap = {
+          'demo_censo_pending': KEY_PENDING,
+          'demo_reemplazados_all': KEY_REEMPLAZADOS_ALL,
+          'demo_reemplazados_pending': KEY_REEMPLAZADOS_PENDING,
+          'demo_base_cache_v1': KEY_BASE_CACHE,
+          'demo_users_cache_v1': KEY_USERS_CACHE,
+          'demo_gh_write_token': KEY_GH_TOKEN,
+          'demo_device_id': KEY_DEVICE_ID,
+          'demo_censo_enviados': KEY_ENVIADOS,
+          'demo_sw_migrated_v3': KEY_SW_MIGRATION
+        };
+
+        Object.entries(legacyMap).forEach(([legacyKey, newKey]) => {
+          const current = localStorage.getItem(newKey);
+          if (current !== null) return;
+          const legacy = localStorage.getItem(legacyKey);
+          if (legacy !== null) {
+            localStorage.setItem(newKey, legacy);
+          }
+        });
+
+        localStorage.setItem(KEY_STORAGE_MIGRATION, '1');
+      } catch {
+      }
+    }
 
     function firstValue(obj, keys) {
       for (const key of keys) {
@@ -388,6 +448,60 @@
       return response.arrayBuffer();
     }
 
+    async function loadTextFileFromStatic(path) {
+      const response = await fetch(path, { cache: 'no-store' });
+      if (!response.ok) {
+        throw new Error('No se pudo leer archivo estático.');
+      }
+      return response.text();
+    }
+
+    async function loadBinaryFileFromStatic(path) {
+      const response = await fetch(path, { cache: 'no-store' });
+      if (!response.ok) {
+        throw new Error('No se pudo leer archivo XLSX estático.');
+      }
+      return response.arrayBuffer();
+    }
+
+    async function tryFetchBaseFromStatic() {
+      for (const sourcePath of BASE_STATIC_FILE_CANDIDATES) {
+        const lowerName = normalizeName(sourcePath);
+        try {
+          if (lowerName.endsWith('.xlsx')) {
+            if (typeof XLSX === 'undefined') {
+              throw new Error('No se pudo inicializar el lector XLSX local.');
+            }
+            const buffer = await loadBinaryFileFromStatic(sourcePath);
+            const workbook = XLSX.read(buffer, { type: 'array' });
+            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+            const padron = rowsToPadron(rows);
+            if (Object.keys(padron).length) return { padron, source: sourcePath };
+            continue;
+          }
+
+          const content = await loadTextFileFromStatic(sourcePath);
+          if (lowerName.endsWith('.json')) {
+            const data = JSON.parse(content);
+            const rows = Array.isArray(data) ? data : Object.values(data);
+            const padron = rowsToPadron(rows);
+            if (Object.keys(padron).length) return { padron, source: sourcePath };
+            continue;
+          }
+
+          if (lowerName.endsWith('.csv')) {
+            const rows = csvToRows(content);
+            const padron = rowsToPadron(rows);
+            if (Object.keys(padron).length) return { padron, source: sourcePath };
+          }
+        } catch {
+        }
+      }
+
+      throw new Error('No se encontró base estática local (XLSX/CSV/JSON).');
+    }
+
     async function tryFetchBaseFromGithub() {
       const token = getGithubWriteToken();
       const allFiles = await getRepoFiles(token);
@@ -587,6 +701,41 @@
       return { users, source: sourcePath };
     }
 
+    async function tryFetchUsersFromStatic() {
+      for (const sourcePath of USERS_STATIC_FILE_CANDIDATES) {
+        const lowerName = normalizeName(sourcePath);
+        try {
+          if (lowerName.endsWith('.xlsx')) {
+            if (typeof XLSX === 'undefined') {
+              throw new Error('No se pudo inicializar el lector XLSX local para usuarios.');
+            }
+            const buffer = await loadBinaryFileFromStatic(sourcePath);
+            const workbook = XLSX.read(buffer, { type: 'array' });
+            const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+            const rows = XLSX.utils.sheet_to_json(firstSheet, { defval: '' });
+            const users = rowsToUsers(rows);
+            if (users.length) return { users, source: sourcePath };
+            continue;
+          }
+
+          const content = await loadTextFileFromStatic(sourcePath);
+          let rows = [];
+          if (lowerName.endsWith('.json')) {
+            const data = JSON.parse(content);
+            rows = Array.isArray(data) ? data : Object.values(data);
+          } else if (lowerName.endsWith('.csv')) {
+            rows = csvToRows(content);
+          }
+
+          const users = rowsToUsers(rows);
+          if (users.length) return { users, source: sourcePath };
+        } catch {
+        }
+      }
+
+      throw new Error('No se encontró catálogo estático de usuarios (XLSX/CSV/JSON).');
+    }
+
     async function cargarUsuariosAutomatica() {
       const cached = loadUsersCache();
       if (cached) {
@@ -595,14 +744,21 @@
       }
 
       try {
-        const remote = await tryFetchUsersFromGithub();
+        const remote = await tryFetchUsersFromStatic();
         usersCatalog = remote.users;
         saveUsersCache(usersCatalog, remote.source);
         renderUsersDatalist();
       } catch (error) {
-        if (!cached) {
-          console.warn('Detalle catálogo capturistas:', error.message);
-          estado('No se pudo cargar el catálogo de acceso. Verifica token/admin.', false);
+        try {
+          const remoteGithub = await tryFetchUsersFromGithub();
+          usersCatalog = remoteGithub.users;
+          saveUsersCache(usersCatalog, remoteGithub.source);
+          renderUsersDatalist();
+        } catch (errorGithub) {
+          if (!cached) {
+            console.warn('Detalle catálogo capturistas:', errorGithub.message || error.message);
+            estado('No se pudo cargar el catálogo de acceso. Verifica archivo USUARIOS o token.', false);
+          }
         }
       }
     }
@@ -614,12 +770,18 @@
       }
 
       try {
-        const remote = await tryFetchBaseFromGithub();
+        const remote = await tryFetchBaseFromStatic();
         baseCenso = remote.padron;
         saveBaseCache(baseCenso, remote.source);
       } catch (error) {
-        if (!cached) {
-          estado('Sin base disponible: ' + error.message, false);
+        try {
+          const remoteGithub = await tryFetchBaseFromGithub();
+          baseCenso = remoteGithub.padron;
+          saveBaseCache(baseCenso, remoteGithub.source);
+        } catch (errorGithub) {
+          if (!cached) {
+            estado('Sin base disponible: ' + (errorGithub.message || error.message), false);
+          }
         }
       }
     }
@@ -1073,8 +1235,8 @@
       try {
         validarColeccionRegistros(items, 'pendientes');
         const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const deviceId = localStorage.getItem('demo_device_id') || ('device-' + Math.random().toString(36).slice(2, 8));
-        localStorage.setItem('demo_device_id', deviceId);
+        const deviceId = localStorage.getItem(KEY_DEVICE_ID) || ('device-' + Math.random().toString(36).slice(2, 8));
+        localStorage.setItem(KEY_DEVICE_ID, deviceId);
         const capturista = normalizeName(items[0]?.capturista_nombre || 'sin_capturista');
         const csv = itemsToCsv(items);
         validarIntegridadCsv(csv, items.length, 'pendientes');
@@ -1110,7 +1272,7 @@
           setReemplazadosPending([]);
         }
 
-        localStorage.setItem('demo_censo_enviados', JSON.stringify([...(JSON.parse(localStorage.getItem('demo_censo_enviados')||'[]')), ...items]));
+        localStorage.setItem(KEY_ENVIADOS, JSON.stringify([...(JSON.parse(localStorage.getItem(KEY_ENVIADOS)||'[]')), ...items]));
         setPending([]);
         estado(`Envío correcto a GitHub: ${filePath}`);
       } catch (error) {
@@ -1167,7 +1329,7 @@
 
     function descargarCSV() {
       const pendientes = getPending().map((item) => ({ ...item, estado_sync: 'PENDIENTE' }));
-      const enviados = JSON.parse(localStorage.getItem('demo_censo_enviados') || '[]')
+      const enviados = JSON.parse(localStorage.getItem(KEY_ENVIADOS) || '[]')
         .map((item) => ({ ...item, estado_sync: 'ENVIADO' }));
       const reemplazados = getReemplazadosAll().map((item) => ({
         ...item,
@@ -1248,6 +1410,7 @@
       `).join('');
     }
 
+    migrateLegacyStorageIfNeeded();
     applySetupFromUrl();
     pintar();
     refreshTokenStatus();
@@ -1255,23 +1418,40 @@
     cargarUsuariosAutomatica();
 
     if ('serviceWorker' in navigator) {
-      window.addEventListener('load', () => {
-        const resetRequested = new URLSearchParams(window.location.search).get('reset_cache') === '1';
-        if (resetRequested) {
-          navigator.serviceWorker.getRegistrations()
-            .then((regs) => Promise.all(regs.map((reg) => reg.unregister())))
-            .then(() => caches.keys())
-            .then((keys) => Promise.all(keys.map((key) => caches.delete(key))))
-            .then(() => {
-              const cleanUrl = new URL(window.location.href);
-              cleanUrl.searchParams.delete('reset_cache');
-              window.location.replace(cleanUrl.toString());
-            })
-            .catch(() => {});
-          return;
-        }
+      window.addEventListener('load', async () => {
+        try {
+          if (!localStorage.getItem(KEY_SW_MIGRATION)) {
+            const keys = await caches.keys();
+            const oldKeys = keys.filter((key) => key.startsWith('papeao-censo-'));
+            await Promise.all(oldKeys.map((key) => caches.delete(key)));
+            localStorage.setItem(KEY_SW_MIGRATION, '1');
+          }
 
-        navigator.serviceWorker.register('./sw.js').catch(() => {});
+          let reloadedByController = false;
+          navigator.serviceWorker.addEventListener('controllerchange', () => {
+            if (reloadedByController) return;
+            reloadedByController = true;
+            window.location.reload();
+          });
+
+          const registration = await navigator.serviceWorker.register('./sw.js');
+          await registration.update().catch(() => {});
+
+          if (registration.waiting) {
+            registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+          }
+
+          registration.addEventListener('updatefound', () => {
+            const installing = registration.installing;
+            if (!installing) return;
+            installing.addEventListener('statechange', () => {
+              if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+                installing.postMessage({ type: 'SKIP_WAITING' });
+              }
+            });
+          });
+        } catch {
+        }
       });
     }
   </script>

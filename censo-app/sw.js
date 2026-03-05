@@ -1,4 +1,4 @@
-const CACHE_NAME = 'papeao-censo-v2';
+const CACHE_NAME = 'papeao-censo-v3';
 const APP_SHELL = [
   './',
   './index.html',
@@ -28,6 +28,12 @@ self.addEventListener('activate', (event) => {
     )
   );
   self.clients.claim();
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('fetch', (event) => {

@@ -4,6 +4,7 @@ const APP_SHELL = [
   './index.html',
   './manifest.webmanifest',
   './libs/xlsx.full.min.js',
+  './web-demo/libs/xlsx.full.min.js',
   '../logo/logo.png'
 ];
 

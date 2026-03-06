@@ -82,6 +82,7 @@
       <div><label>Nombre</label><input id="nombre" /></div>
       <div><label>Edad</label><input id="edad" type="number" /></div>
       <div><label>Teléfono</label><input id="telefono" /></div>
+      <div><label>Correo electrónico</label><input id="correo_electronico" type="email" /></div>
       <div><label>Calle</label><input id="calle" /></div>
       <div><label>Número</label><input id="numero" /></div>
       <div><label>Manzana INEGI (base)</label><input id="manzana_inegi" readonly /></div>
@@ -302,6 +303,7 @@
           nombre: firstValue(key, ['nombre de la jefa', 'nombre', 'jefa de familia']),
           edad: firstValue(key, ['edad']),
           telefono: firstValue(key, ['telefono', 'teléfono']),
+          correo_electronico: firstValue(key, ['correo electronico', 'correo electrónico', 'correo', 'email', 'e-mail']),
           calle: firstValue(key, ['calle']),
           numero: firstValue(key, ['numero', 'número']),
           manzana_inegi: firstValue(key, ['manzana inegi', 'manzana_inegi', 'manzana']),
@@ -809,6 +811,7 @@
         nombre_anterior: previousItem.nombre,
         edad_anterior: previousItem.edad,
         telefono_anterior: previousItem.telefono,
+        correo_electronico_anterior: previousItem.correo_electronico,
         calle_anterior: previousItem.calle,
         numero_anterior: previousItem.numero,
         manzana_inegi_anterior: previousItem.manzana_inegi,
@@ -820,6 +823,7 @@
         nombre_nuevo: currentItem.nombre,
         edad_nueva: currentItem.edad,
         telefono_nuevo: currentItem.telefono,
+        correo_electronico_nuevo: currentItem.correo_electronico,
         calle_nueva: currentItem.calle,
         numero_nuevo: currentItem.numero,
         manzana_inegi_nueva: currentItem.manzana_inegi,
@@ -858,6 +862,7 @@
       setValor('nombre', hit.nombre);
       setValor('edad', hit.edad);
       setValor('telefono', hit.telefono);
+      setValor('correo_electronico', hit.correo_electronico);
       setValor('calle', hit.calle);
       setValor('numero', hit.numero);
       setValor('manzana_inegi', hit.manzana_inegi);
@@ -953,6 +958,7 @@
         nombre: valor('nombre'),
         edad: valor('edad') ? Number(valor('edad')) : null,
         telefono: valor('telefono'),
+        correo_electronico: valor('correo_electronico'),
         calle: valor('calle'),
         numero: valor('numero'),
         manzana_inegi: valor('manzana_inegi'),
@@ -986,7 +992,7 @@
     }
 
     function itemsToCsv(items) {
-      const headers = ['local_id','capturista_nombre','capturista_telefono','clave_vivienda','nombre','edad','telefono','calle','numero','manzana_inegi','manzana','lote','curp','coordenadas_gps','direccion_base','fecha_captura'];
+      const headers = ['local_id','capturista_nombre','capturista_telefono','clave_vivienda','nombre','edad','telefono','correo_electronico','calle','numero','manzana_inegi','manzana','lote','curp','coordenadas_gps','direccion_base','fecha_captura'];
       const lines = [headers.join(',')];
       items.forEach((item) => {
         const line = headers.map((h) => csvEscape(item[h])).join(',');
@@ -999,8 +1005,8 @@
       const headers = [
         'reemplazo_id','fecha_reemplazo','clave_vivienda','capturista_reemplazo',
         'local_id_anterior','local_id_actual',
-        'nombre_anterior','edad_anterior','telefono_anterior','calle_anterior','numero_anterior','manzana_inegi_anterior','manzana_anterior','lote_anterior','curp_anterior','coordenadas_gps_anterior','direccion_base_anterior',
-        'nombre_nuevo','edad_nueva','telefono_nuevo','calle_nueva','numero_nuevo','manzana_inegi_nueva','manzana_nueva','lote_nuevo','curp_nuevo','coordenadas_gps_nueva','direccion_base_nueva'
+        'nombre_anterior','edad_anterior','telefono_anterior','correo_electronico_anterior','calle_anterior','numero_anterior','manzana_inegi_anterior','manzana_anterior','lote_anterior','curp_anterior','coordenadas_gps_anterior','direccion_base_anterior',
+        'nombre_nuevo','edad_nueva','telefono_nuevo','correo_electronico_nuevo','calle_nueva','numero_nuevo','manzana_inegi_nueva','manzana_nueva','lote_nuevo','curp_nuevo','coordenadas_gps_nueva','direccion_base_nueva'
       ];
       const lines = [headers.join(',')];
       items.forEach((item) => {
@@ -1544,6 +1550,7 @@
         nombre: item.nombre_nuevo,
         edad: item.edad_nueva,
         telefono: item.telefono_nuevo,
+        correo_electronico: item.correo_electronico_nuevo,
         calle: item.calle_nueva,
         numero: item.numero_nuevo,
         manzana_inegi: item.manzana_inegi_nueva,
@@ -1562,7 +1569,7 @@
       }
 
       const headers = [
-        'estado_sync','local_id','capturista_nombre','capturista_telefono','clave_vivienda','nombre','edad','telefono',
+        'estado_sync','local_id','capturista_nombre','capturista_telefono','clave_vivienda','nombre','edad','telefono','correo_electronico',
         'calle','numero','manzana_inegi','manzana','lote','curp','coordenadas_gps','direccion_base','fecha_captura'
       ];
 

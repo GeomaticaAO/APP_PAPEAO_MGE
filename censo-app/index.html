@@ -133,7 +133,7 @@
     const KEY_REEMPLAZADOS_ALL = 'papeao_reemplazados_all';
     const KEY_REEMPLAZADOS_PENDING = 'papeao_reemplazados_pending';
     const KEY_BASE_CACHE = 'papeao_base_cache_v1';
-    const KEY_USERS_CACHE = 'papeao_users_cache_v1';
+    const KEY_USERS_CACHE = 'papeao_users_cache_v2';
     const KEY_GH_TOKEN = 'papeao_gh_write_token';
     const KEY_SYNC_PROXY_URL = 'papeao_sync_proxy_url';
     const KEY_DEVICE_ID = 'papeao_device_id';
@@ -339,7 +339,10 @@
 
     function loadUsersCache() {
       try {
-        const raw = JSON.parse(localStorage.getItem(KEY_USERS_CACHE) || '{}');
+        let raw = JSON.parse(localStorage.getItem(KEY_USERS_CACHE) || '{}');
+        if (!raw || !Array.isArray(raw.users) || !raw.users.length) {
+          raw = JSON.parse(localStorage.getItem('papeao_users_cache_v1') || '{}');
+        }
         if (!raw || !Array.isArray(raw.users) || !raw.users.length) return null;
         return raw;
       } catch {

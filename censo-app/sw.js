@@ -1,4 +1,4 @@
-const CACHE_NAME = 'papeao-censo-v3';
+const CACHE_NAME = 'papeao-censo-v4';
 const APP_SHELL = [
   './',
   './index.html',
@@ -42,6 +42,7 @@ self.addEventListener('fetch', (event) => {
   if (request.method !== 'GET') return;
   const requestUrl = new URL(request.url);
   const isSameOrigin = requestUrl.origin === self.location.origin;
+  const pathname = requestUrl.pathname.toLowerCase();
 
   if (request.mode === 'navigate') {
     event.respondWith(
@@ -57,6 +58,26 @@ self.addEventListener('fetch', (event) => {
   }
 
   if (!isSameOrigin) {
+    return;
+  }
+
+  const isCatalogFile =
+    pathname.endsWith('.xlsx') ||
+    pathname.endsWith('.csv') ||
+    pathname.endsWith('.json') ||
+    pathname.includes('usuarios') ||
+    pathname.includes('total_jefas');
+
+  if (isCatalogFile) {
+    event.respondWith(
+      fetch(request)
+        .then((response) => {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(request, copy));
+          return response;
+        })
+        .catch(() => caches.match(request))
+    );
     return;
   }
 

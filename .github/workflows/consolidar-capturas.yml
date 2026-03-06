@@ -1,0 +1,124 @@
+name: Consolidar Capturas
+
+on:
+  push:
+    paths:
+      - 'Bases de datos/**/*.csv'
+      - 'capturas/**/*.csv'
+      - '.github/workflows/consolidar-capturas.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  consolidar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install openpyxl
+
+      - name: Generar concentrados
+        run: |
+          python - << 'PY'
+          import csv
+          from pathlib import Path
+          from openpyxl import Workbook
+
+          output_dir = Path('salidas')
+          output_dir.mkdir(parents=True, exist_ok=True)
+
+          main_dirs = [Path('Bases de datos'), Path('capturas')]
+          rem_dirs = [Path('Bases de datos/Remplazados'), Path('capturas/Remplazados')]
+
+          main_fields = [
+              'local_id','capturista_nombre','capturista_telefono','clave_vivienda','nombre','edad','telefono',
+              'calle','numero','manzana_inegi','manzana','lote','curp','coordenadas_gps','gps_fecha','direccion_base','fecha_captura'
+          ]
+
+          rem_fields = [
+              'reemplazo_id','fecha_reemplazo','clave_vivienda','capturista_reemplazo',
+              'local_id_anterior','local_id_actual',
+              'nombre_anterior','edad_anterior','telefono_anterior','calle_anterior','numero_anterior','manzana_inegi_anterior','manzana_anterior','lote_anterior','curp_anterior','coordenadas_gps_anterior','gps_fecha_anterior','direccion_base_anterior',
+              'nombre_nuevo','edad_nueva','telefono_nuevo','calle_nueva','numero_nuevo','manzana_inegi_nueva','manzana_nueva','lote_nuevo','curp_nuevo','coordenadas_gps_nueva','gps_fecha_nueva','direccion_base_nueva'
+          ]
+
+          def collect_rows(dirs, fields, key_field):
+              rows_by_key = {}
+              for base_dir in dirs:
+                  if not base_dir.exists():
+                      continue
+                  for file in sorted(base_dir.rglob('*.csv')):
+                      if 'remplazados' in file.name.lower() and dirs is main_dirs:
+                          continue
+                      with file.open('r', encoding='utf-8-sig', newline='') as f:
+                          reader = csv.DictReader(f)
+                          for row in reader:
+                              row_key = (row.get(key_field) or '').strip()
+                              if not row_key:
+                                  continue
+                              rows_by_key[row_key] = {k: (row.get(k, '') or '').strip() for k in fields}
+              return list(rows_by_key.values())
+
+          main_rows = collect_rows(main_dirs, main_fields, 'local_id')
+          main_rows.sort(key=lambda x: x.get('fecha_captura', ''))
+
+          rem_rows = collect_rows(rem_dirs, rem_fields, 'reemplazo_id')
+          rem_rows.sort(key=lambda x: x.get('fecha_reemplazo', ''))
+
+          out_main_csv = output_dir / 'CONSOLIDADO_CSV.csv'
+          out_main_xlsx = output_dir / 'CONSOLIDADO.xlsx'
+          out_rem_csv = output_dir / 'REMPLAZADOS_CSV.csv'
+          out_rem_xlsx = output_dir / 'REMPLAZADOS.xlsx'
+
+          with out_main_csv.open('w', encoding='utf-8', newline='') as f:
+              writer = csv.DictWriter(f, fieldnames=main_fields)
+              writer.writeheader()
+              writer.writerows(main_rows)
+
+          wb_main = Workbook()
+          ws_main = wb_main.active
+          ws_main.title = 'CONSOLIDADO'
+          ws_main.append(main_fields)
+          for row in main_rows:
+              ws_main.append([row.get(col, '') for col in main_fields])
+          wb_main.save(out_main_xlsx)
+
+          with out_rem_csv.open('w', encoding='utf-8', newline='') as f:
+              writer = csv.DictWriter(f, fieldnames=rem_fields)
+              writer.writeheader()
+              writer.writerows(rem_rows)
+
+          wb_rem = Workbook()
+          ws_rem = wb_rem.active
+          ws_rem.title = 'REMPLAZADOS'
+          ws_rem.append(rem_fields)
+          for row in rem_rows:
+              ws_rem.append([row.get(col, '') for col in rem_fields])
+          wb_rem.save(out_rem_xlsx)
+
+          print(f'Consolidado principal: {len(main_rows)} filas')
+          print(f'Consolidado remplazados: {len(rem_rows)} filas')
+          PY
+
+      - name: Commit concentrados
+        run: |
+          if git diff --quiet; then
+            echo "Sin cambios para commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add salidas/CONSOLIDADO_CSV.csv salidas/CONSOLIDADO.xlsx salidas/REMPLAZADOS_CSV.csv salidas/REMPLAZADOS.xlsx
+          git commit -m "chore: actualizar concentrados de capturas y remplazados"
+          git push

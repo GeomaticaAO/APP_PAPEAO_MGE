@@ -89,10 +89,9 @@
       <div><label>Lote</label><input id="lote" /></div>
       <div><label>CURP</label><input id="curp" /></div>
       <div class="full row" style="margin-top:0">
-        <button class="btn-gray" onclick="capturarCoordenadasGPS()">Capturar coordenadas GPS</button>
+        <button id="btnCapturarGPS" class="btn-gray" onclick="capturarCoordenadasGPS()">Capturar coordenadas GPS</button>
       </div>
       <div class="full"><label>Coordenadas GPS</label><input id="coordenadas_gps" readonly placeholder="Ej: 19.432608,-99.133209" /></div>
-      <div class="full"><label>Fecha GPS</label><input id="gps_fecha" readonly /></div>
       <div class="full"><label>Dirección base</label><input id="direccion_base" readonly /></div>
     </div>
 
@@ -817,7 +816,6 @@
         lote_anterior: previousItem.lote,
         curp_anterior: previousItem.curp,
         coordenadas_gps_anterior: previousItem.coordenadas_gps,
-        gps_fecha_anterior: previousItem.gps_fecha,
         direccion_base_anterior: previousItem.direccion_base,
         nombre_nuevo: currentItem.nombre,
         edad_nueva: currentItem.edad,
@@ -829,7 +827,6 @@
         lote_nuevo: currentItem.lote,
         curp_nuevo: currentItem.curp,
         coordenadas_gps_nueva: currentItem.coordenadas_gps,
-        gps_fecha_nueva: currentItem.gps_fecha,
         direccion_base_nueva: currentItem.direccion_base
       };
 
@@ -868,38 +865,73 @@
       setValor('lote', hit.lote);
       setValor('curp', hit.curp);
       setValor('coordenadas_gps', '');
-      setValor('gps_fecha', '');
       setValor('direccion_base', hit.direccion_base);
       estado('Datos cargados desde censo base.');
     }
 
-    function capturarCoordenadasGPS() {
-      if (!ensureAuthenticated()) return;
+    function obtenerCoordenadasGps(options) {
+      return new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, options);
+      });
+    }
+
+    async function capturarCoordenadasGPS() {
+      if (!window.isSecureContext) {
+        estado('La captura GPS requiere abrir la app en HTTPS.', false);
+        return;
+      }
       if (!navigator.geolocation) {
         estado('Tu navegador no soporta geolocalización GPS.', false);
         return;
       }
 
+      const button = document.getElementById('btnCapturarGPS');
+      const originalText = button ? button.textContent : '';
+      if (button) {
+        button.disabled = true;
+        button.textContent = 'Capturando...';
+      }
+
       estado('Capturando coordenadas GPS...');
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          const lat = Number(position.coords.latitude).toFixed(6);
-          const lng = Number(position.coords.longitude).toFixed(6);
-          const coords = `${lat},${lng}`;
-          setValor('coordenadas_gps', coords);
-          setValor('gps_fecha', new Date().toISOString());
-          estado(`Coordenadas capturadas: ${coords}`);
-        },
-        (error) => {
-          const message = String(error?.message || 'Error al obtener GPS.');
-          estado('No se pudo capturar GPS: ' + message, false);
-        },
-        {
-          enableHighAccuracy: true,
-          timeout: 15000,
-          maximumAge: 0
+
+      try {
+        let position;
+        try {
+          position = await obtenerCoordenadasGps({
+            enableHighAccuracy: true,
+            timeout: 20000,
+            maximumAge: 0
+          });
+        } catch {
+          position = await obtenerCoordenadasGps({
+            enableHighAccuracy: false,
+            timeout: 15000,
+            maximumAge: 60000
+          });
         }
-      );
+
+        const lat = Number(position.coords.latitude).toFixed(6);
+        const lng = Number(position.coords.longitude).toFixed(6);
+        const coords = `${lat},${lng}`;
+        setValor('coordenadas_gps', coords);
+        estado(`Coordenadas capturadas: ${coords}`);
+      } catch (error) {
+        const code = Number(error?.code || 0);
+        if (code === 1) {
+          estado('Permiso de ubicación denegado. Activa la ubicación y permite el acceso al sitio.', false);
+        } else if (code === 2) {
+          estado('No se pudo obtener ubicación del dispositivo. Verifica señal GPS y vuelve a intentar.', false);
+        } else if (code === 3) {
+          estado('Tiempo de espera agotado al obtener GPS. Intenta nuevamente en un lugar abierto.', false);
+        } else {
+          estado('No se pudo capturar GPS: ' + String(error?.message || 'Error desconocido'), false);
+        }
+      } finally {
+        if (button) {
+          button.disabled = false;
+          button.textContent = originalText || 'Capturar coordenadas GPS';
+        }
+      }
     }
 
     function guardarOffline() {
@@ -928,7 +960,6 @@
         lote: valor('lote'),
         curp: valor('curp'),
         coordenadas_gps: coordenadasGps,
-        gps_fecha: valor('gps_fecha') || new Date().toISOString(),
         direccion_base: valor('direccion_base'),
         fecha_captura: new Date().toISOString()
       };
@@ -955,7 +986,7 @@
     }
 
     function itemsToCsv(items) {
-      const headers = ['local_id','capturista_nombre','capturista_telefono','clave_vivienda','nombre','edad','telefono','calle','numero','manzana_inegi','manzana','lote','curp','coordenadas_gps','gps_fecha','direccion_base','fecha_captura'];
+      const headers = ['local_id','capturista_nombre','capturista_telefono','clave_vivienda','nombre','edad','telefono','calle','numero','manzana_inegi','manzana','lote','curp','coordenadas_gps','direccion_base','fecha_captura'];
       const lines = [headers.join(',')];
       items.forEach((item) => {
         const line = headers.map((h) => csvEscape(item[h])).join(',');
@@ -968,8 +999,8 @@
       const headers = [
         'reemplazo_id','fecha_reemplazo','clave_vivienda','capturista_reemplazo',
         'local_id_anterior','local_id_actual',
-        'nombre_anterior','edad_anterior','telefono_anterior','calle_anterior','numero_anterior','manzana_inegi_anterior','manzana_anterior','lote_anterior','curp_anterior','coordenadas_gps_anterior','gps_fecha_anterior','direccion_base_anterior',
-        'nombre_nuevo','edad_nueva','telefono_nuevo','calle_nueva','numero_nuevo','manzana_inegi_nueva','manzana_nueva','lote_nuevo','curp_nuevo','coordenadas_gps_nueva','gps_fecha_nueva','direccion_base_nueva'
+        'nombre_anterior','edad_anterior','telefono_anterior','calle_anterior','numero_anterior','manzana_inegi_anterior','manzana_anterior','lote_anterior','curp_anterior','coordenadas_gps_anterior','direccion_base_anterior',
+        'nombre_nuevo','edad_nueva','telefono_nuevo','calle_nueva','numero_nuevo','manzana_inegi_nueva','manzana_nueva','lote_nuevo','curp_nuevo','coordenadas_gps_nueva','direccion_base_nueva'
       ];
       const lines = [headers.join(',')];
       items.forEach((item) => {
@@ -1520,7 +1551,6 @@
         lote: item.lote_nuevo,
         curp: item.curp_nuevo,
         coordenadas_gps: item.coordenadas_gps_nueva,
-        gps_fecha: item.gps_fecha_nueva,
         direccion_base: item.direccion_base_nueva,
         fecha_captura: item.fecha_reemplazo
       }));
@@ -1533,7 +1563,7 @@
 
       const headers = [
         'estado_sync','local_id','capturista_nombre','capturista_telefono','clave_vivienda','nombre','edad','telefono',
-        'calle','numero','manzana_inegi','manzana','lote','curp','coordenadas_gps','gps_fecha','direccion_base','fecha_captura'
+        'calle','numero','manzana_inegi','manzana','lote','curp','coordenadas_gps','direccion_base','fecha_captura'
       ];
 
       const lines = [headers.join(',')];

@@ -13,7 +13,7 @@ export default {
 
     try {
       const body = await request.json();
-      const { owner, repo, branch = 'main', folder = 'capturas', items = [] } = body || {};
+      const { owner, repo, branch = 'main', folder = 'capturas', type = 'main', deviceId = 'web-device', items = [] } = body || {};
 
       if (!owner || !repo || !Array.isArray(items) || !items.length) {
         return json({ ok: false, message: 'Payload inválido' }, 400);
@@ -25,15 +25,25 @@ export default {
       }
 
       const stamp = new Date().toISOString().replace(/[.:]/g, '-');
-      const capturistaRaw = String(items[0]?.capturista_nombre || 'sin_capturista').toLowerCase();
+      const capturistaRaw = String(items[0]?.capturista_nombre || items[0]?.capturista_reemplazo || 'sin_capturista').toLowerCase();
       const capturista = capturistaRaw.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '_');
-      const deviceId = String(items[0]?.dispositivo_id || 'web-device').replace(/\s+/g, '_');
-      const filePath = `${folder}/${capturista}/${deviceId}/${stamp}.csv`;
+      const safeDeviceId = String(items[0]?.dispositivo_id || deviceId || 'web-device').replace(/\s+/g, '_');
 
-      const headers = [
+      const mainHeaders = [
         'local_id','capturista_nombre','capturista_telefono','clave_vivienda','nombre','edad','telefono',
-        'calle','numero','manzana_inegi','manzana','lote','curp','direccion_base','fecha_captura'
+        'calle','numero','manzana_inegi','manzana','lote','curp','coordenadas_gps','gps_fecha','direccion_base','fecha_captura'
       ];
+
+      const remHeaders = [
+        'reemplazo_id','fecha_reemplazo','clave_vivienda','capturista_reemplazo',
+        'local_id_anterior','local_id_actual',
+        'nombre_anterior','edad_anterior','telefono_anterior','calle_anterior','numero_anterior','manzana_inegi_anterior','manzana_anterior','lote_anterior','curp_anterior','coordenadas_gps_anterior','gps_fecha_anterior','direccion_base_anterior',
+        'nombre_nuevo','edad_nueva','telefono_nuevo','calle_nueva','numero_nuevo','manzana_inegi_nueva','manzana_nueva','lote_nuevo','curp_nuevo','coordenadas_gps_nueva','gps_fecha_nueva','direccion_base_nueva'
+      ];
+
+      const headers = type === 'reemplazados' ? remHeaders : mainHeaders;
+      const suffix = type === 'reemplazados' ? '_remplazados' : '';
+      const filePath = `${folder}/${capturista}/${safeDeviceId}/${stamp}${suffix}.csv`;
 
       const escapeCsv = (v) => {
         const s = String(v ?? '');

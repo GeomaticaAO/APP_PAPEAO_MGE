@@ -1108,6 +1108,25 @@
       }
     }
 
+    function guardarTokenDesdeTexto(tokenText) {
+      const token = tokenFromScannedText(tokenText);
+      if (!token) {
+        estado('El valor no contiene un token válido.', false);
+        return false;
+      }
+
+      const input = document.getElementById('gh_token_input');
+      if (input) input.value = token;
+      if (!saveTokenLocal(token)) {
+        estado('No se pudo guardar token en este navegador.', false);
+        return false;
+      }
+
+      refreshTokenStatus();
+      estado('Token guardado correctamente.');
+      return true;
+    }
+
     function detenerEscaneoTokenQR() {
       if (qrScanTimer) {
         clearInterval(qrScanTimer);
@@ -1124,8 +1143,20 @@
     }
 
     async function iniciarEscaneoTokenQR() {
+      if (!window.isSecureContext) {
+        estado('Para escanear QR debes abrir la app en HTTPS.', false);
+        return;
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        estado('Tu navegador no permite acceso a cámara. Usa Guardar token manual.', false);
+        return;
+      }
+
       if (!('BarcodeDetector' in window)) {
-        estado('Tu navegador no soporta escaneo QR directo. Usa Guardar token manual.', false);
+        const manual = window.prompt('Tu navegador no soporta escaneo QR. Pega aquí el token o enlace con setup_token:');
+        if (manual) guardarTokenDesdeTexto(manual);
+        else estado('Escaneo QR no disponible en este navegador. Usa Guardar token manual.', false);
         return;
       }
 
@@ -1142,6 +1173,7 @@
         });
 
         video.srcObject = qrStream;
+        await video.play().catch(() => {});
         box.style.display = 'block';
 
         const detector = new BarcodeDetector({ formats: ['qr_code'] });
@@ -1150,27 +1182,23 @@
             const barcodes = await detector.detect(video);
             if (!barcodes || !barcodes.length) return;
             const text = barcodes[0]?.rawValue || '';
-            const token = tokenFromScannedText(text);
-            if (!token) {
+            if (!guardarTokenDesdeTexto(text)) {
               estado('QR leído, pero no contiene token válido.', false);
               return;
             }
-
-            const input = document.getElementById('gh_token_input');
-            if (input) input.value = token;
-            if (!saveTokenLocal(token)) {
-              estado('No se pudo guardar token desde QR.', false);
-              return;
-            }
-
-            refreshTokenStatus();
-            estado('Token cargado desde QR y guardado correctamente.');
             detenerEscaneoTokenQR();
           } catch {
           }
         }, 700);
       } catch (error) {
-        estado('No se pudo activar cámara para QR: ' + error.message, false);
+        const msg = String(error?.message || 'Error desconocido');
+        if (String(error?.name || '').toLowerCase().includes('notallowed')) {
+          estado('Permiso de cámara denegado. Habilítalo en el navegador o usa Guardar token manual.', false);
+        } else if (String(error?.name || '').toLowerCase().includes('notfound')) {
+          estado('No se encontró cámara disponible en este equipo.', false);
+        } else {
+          estado('No se pudo activar cámara para QR: ' + msg, false);
+        }
         detenerEscaneoTokenQR();
       }
     }

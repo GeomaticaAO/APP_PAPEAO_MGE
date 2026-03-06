@@ -105,18 +105,14 @@
         <div><label>Repositorio</label><input id="ghRepo" value="APP_PAPEAO_MGE" readonly /></div>
         <div><label>Branch</label><input id="ghBranch" value="main" readonly /></div>
         <div><label>Carpeta destino</label><input id="ghFolder" value="Bases de datos" readonly /></div>
+        <div class="full" id="proxyInputRow"><label>URL sincronización central (sin token)</label><input id="sync_proxy_url" placeholder="https://tu-worker.workers.dev" /></div>
         <div class="full" id="tokenInputRow"><label>Token GitHub</label><input id="gh_token_input" type="password" placeholder="github_pat_..." /></div>
       </div>
       <div class="row" style="margin-top:10px" id="tokenButtonsRow">
+        <button class="btn-github" onclick="guardarProxyManual()">Guardar URL central</button>
         <button class="btn-github" onclick="guardarTokenManual()">Guardar token</button>
-        <button class="btn-github" onclick="iniciarEscaneoTokenQR()">Escanear QR token</button>
-      </div>
-      <div id="qrScannerBox" class="scanner-box" style="display:none;">
-        <div class="muted" style="margin-bottom:8px">Apunta la cámara al QR del token.</div>
-        <video id="qrVideo" class="scanner-video" autoplay playsinline muted></video>
-        <div class="row" style="margin-top:8px">
-          <button class="btn-gray" onclick="detenerEscaneoTokenQR()">Cancelar escaneo</button>
-        </div>
+        <button class="btn-github" onclick="pegarTokenPortapapeles()">Pegar portapapeles</button>
+        <button class="btn-github" onclick="configurarDesdeEnlace()">Pegar código de WhatsApp</button>
       </div>
       <div id="tokenEstado" class="muted" style="margin-top:6px">Token no configurado</div>
     </details>
@@ -142,6 +138,7 @@
     const KEY_BASE_CACHE = 'papeao_base_cache_v1';
     const KEY_USERS_CACHE = 'papeao_users_cache_v1';
     const KEY_GH_TOKEN = 'papeao_gh_write_token';
+    const KEY_SYNC_PROXY_URL = 'papeao_sync_proxy_url';
     const KEY_DEVICE_ID = 'papeao_device_id';
     const KEY_ENVIADOS = 'papeao_censo_enviados';
     const KEY_SW_MIGRATION = 'papeao_sw_migrated_v3';
@@ -196,8 +193,6 @@
     let repoFilesCache = null;
     let repoBranchInUse = BASE_BRANCH;
     let sessionUser = null;
-    let qrStream = null;
-    let qrScanTimer = null;
 
     function migrateLegacyStorageIfNeeded() {
       try {
@@ -210,6 +205,7 @@
           'demo_base_cache_v1': KEY_BASE_CACHE,
           'demo_users_cache_v1': KEY_USERS_CACHE,
           'demo_gh_write_token': KEY_GH_TOKEN,
+          'demo_sync_proxy_url': KEY_SYNC_PROXY_URL,
           'demo_device_id': KEY_DEVICE_ID,
           'demo_censo_enviados': KEY_ENVIADOS,
           'demo_sw_migrated_v3': KEY_SW_MIGRATION
@@ -1006,6 +1002,28 @@
       return String(GITHUB_WRITE_TOKEN || '').trim();
     }
 
+    function getSyncProxyUrl() {
+      return String(localStorage.getItem(KEY_SYNC_PROXY_URL) || '').trim();
+    }
+
+    function saveSyncProxyUrl(url) {
+      try {
+        localStorage.setItem(KEY_SYNC_PROXY_URL, String(url || '').trim());
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    function clearSyncProxyUrl() {
+      try {
+        localStorage.removeItem(KEY_SYNC_PROXY_URL);
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
     function isInternalTokenMode() {
       return String(GITHUB_WRITE_TOKEN || '').trim().length > 0;
     }
@@ -1014,9 +1032,12 @@
       try {
         const url = new URL(window.location.href);
         const queryToken = url.searchParams.get('setup_token');
+        const queryProxy = url.searchParams.get('setup_proxy');
         const hashParams = new URLSearchParams((url.hash || '').replace(/^#/, ''));
         const hashToken = hashParams.get('setup_token');
+        const hashProxy = hashParams.get('setup_proxy');
         const setupToken = String(queryToken || hashToken || '').trim();
+        const setupProxy = String(queryProxy || hashProxy || '').trim();
 
         if (setupToken) {
           localStorage.setItem(KEY_GH_TOKEN, setupToken);
@@ -1024,6 +1045,16 @@
 
           url.searchParams.delete('setup_token');
           hashParams.delete('setup_token');
+          url.hash = hashParams.toString() ? `#${hashParams.toString()}` : '';
+          window.history.replaceState({}, document.title, url.toString());
+        }
+
+        if (setupProxy) {
+          localStorage.setItem(KEY_SYNC_PROXY_URL, setupProxy);
+          estado('URL central configurada automáticamente desde enlace.');
+
+          url.searchParams.delete('setup_proxy');
+          hashParams.delete('setup_proxy');
           url.hash = hashParams.toString() ? `#${hashParams.toString()}` : '';
           window.history.replaceState({}, document.title, url.toString());
         }
@@ -1037,12 +1068,23 @@
           url.hash = hashParams.toString() ? `#${hashParams.toString()}` : '';
           window.history.replaceState({}, document.title, url.toString());
         }
+
+        const clearProxy = url.searchParams.get('clear_proxy') === '1' || hashParams.get('clear_proxy') === '1';
+        if (clearProxy) {
+          localStorage.removeItem(KEY_SYNC_PROXY_URL);
+          estado('URL central eliminada por enlace de limpieza.');
+          url.searchParams.delete('clear_proxy');
+          hashParams.delete('clear_proxy');
+          url.hash = hashParams.toString() ? `#${hashParams.toString()}` : '';
+          window.history.replaceState({}, document.title, url.toString());
+        }
       } catch {
       }
     }
 
     function refreshTokenStatus() {
       const hasToken = Boolean(getGithubWriteToken());
+      const proxyUrl = getSyncProxyUrl();
       const el = document.getElementById('tokenEstado');
       if (!el) return;
       const input = document.getElementById('gh_token_input');
@@ -1050,14 +1092,45 @@
         const saved = String(localStorage.getItem(KEY_GH_TOKEN) || '').trim();
         if (saved) input.value = saved;
       }
+      const proxyInput = document.getElementById('sync_proxy_url');
+      if (proxyInput) {
+        proxyInput.value = proxyUrl;
+      }
       const rowInput = document.getElementById('tokenInputRow');
       const rowButtons = document.getElementById('tokenButtonsRow');
       if (isInternalTokenMode()) {
         if (rowInput) rowInput.style.display = 'none';
         if (rowButtons) rowButtons.style.display = 'none';
       }
+      if (proxyUrl) {
+        el.textContent = 'Sincronización central activa (sin token en este celular)';
+        el.className = 'ok';
+        return;
+      }
       el.textContent = hasToken ? 'Token configurado (listo para sincronizar manualmente)' : 'Token no configurado';
       el.className = hasToken ? 'ok' : 'muted';
+    }
+
+    function guardarProxyManual() {
+      const proxyUrl = getValue('sync_proxy_url');
+      if (!proxyUrl) {
+        clearSyncProxyUrl();
+        refreshTokenStatus();
+        estado('URL central eliminada.');
+        return;
+      }
+      try {
+        new URL(proxyUrl);
+      } catch {
+        estado('La URL central no es válida.', false);
+        return;
+      }
+      if (!saveSyncProxyUrl(proxyUrl)) {
+        estado('No se pudo guardar la URL central en este navegador.', false);
+        return;
+      }
+      refreshTokenStatus();
+      estado('URL central guardada. Este celular ya no requiere token.');
     }
 
     function saveTokenLocal(token) {
@@ -1090,6 +1163,40 @@
       }
       refreshTokenStatus();
       estado('Token guardado correctamente.');
+    }
+
+    async function pegarTokenPortapapeles() {
+      if (!navigator.clipboard || !navigator.clipboard.readText) {
+        estado('Tu navegador no permite leer portapapeles. Usa Configurar por enlace.', false);
+        return;
+      }
+
+      try {
+        const text = await navigator.clipboard.readText();
+        if (!text) {
+          estado('El portapapeles está vacío.', false);
+          return;
+        }
+        if (!guardarTokenDesdeTexto(text)) {
+          estado('No se detectó token válido en portapapeles.', false);
+          return;
+        }
+      } catch {
+        estado('No se pudo leer el portapapeles. Revisa permisos del navegador.', false);
+      }
+    }
+
+    function configurarDesdeEnlace() {
+      const input = window.prompt('Pega aquí el enlace de configuración recibido por WhatsApp:');
+      if (input === null) return;
+      const raw = String(input || '').trim();
+      if (!raw) {
+        estado('No se ingresó enlace de configuración.', false);
+        return;
+      }
+      if (!guardarTokenDesdeTexto(raw)) {
+        estado('El enlace no contiene setup_token o token válido.', false);
+      }
     }
 
     function tokenFromScannedText(text) {
@@ -1125,82 +1232,6 @@
       refreshTokenStatus();
       estado('Token guardado correctamente.');
       return true;
-    }
-
-    function detenerEscaneoTokenQR() {
-      if (qrScanTimer) {
-        clearInterval(qrScanTimer);
-        qrScanTimer = null;
-      }
-      if (qrStream) {
-        qrStream.getTracks().forEach((t) => t.stop());
-        qrStream = null;
-      }
-      const box = document.getElementById('qrScannerBox');
-      const video = document.getElementById('qrVideo');
-      if (video) video.srcObject = null;
-      if (box) box.style.display = 'none';
-    }
-
-    async function iniciarEscaneoTokenQR() {
-      if (!window.isSecureContext) {
-        estado('Para escanear QR debes abrir la app en HTTPS.', false);
-        return;
-      }
-
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        estado('Tu navegador no permite acceso a cámara. Usa Guardar token manual.', false);
-        return;
-      }
-
-      if (!('BarcodeDetector' in window)) {
-        const manual = window.prompt('Tu navegador no soporta escaneo QR. Pega aquí el token o enlace con setup_token:');
-        if (manual) guardarTokenDesdeTexto(manual);
-        else estado('Escaneo QR no disponible en este navegador. Usa Guardar token manual.', false);
-        return;
-      }
-
-      try {
-        const box = document.getElementById('qrScannerBox');
-        const video = document.getElementById('qrVideo');
-        if (!video || !box) return;
-
-        detenerEscaneoTokenQR();
-
-        qrStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: 'environment' } },
-          audio: false
-        });
-
-        video.srcObject = qrStream;
-        await video.play().catch(() => {});
-        box.style.display = 'block';
-
-        const detector = new BarcodeDetector({ formats: ['qr_code'] });
-        qrScanTimer = setInterval(async () => {
-          try {
-            const barcodes = await detector.detect(video);
-            if (!barcodes || !barcodes.length) return;
-            const text = barcodes[0]?.rawValue || '';
-            if (!guardarTokenDesdeTexto(text)) {
-              estado('QR leído, pero no contiene token válido.', false);
-              return;
-            }
-            detenerEscaneoTokenQR();
-          } catch {
-          }
-        }, 700);
-      } catch (error) {
-        const msg = String(error?.message || 'Error desconocido');
-        if (String(error?.name || '').toLowerCase().includes('notallowed')) {
-          estado('Permiso de cámara denegado. Habilítalo en el navegador o usa Guardar token manual.', false);
-        } else if (String(error?.name || '').toLowerCase().includes('notfound')) {
-          estado('No se encontró cámara disponible en este equipo.', false);
-        } else {
-          estado('No se pudo activar cámara para QR: ' + msg, false);
-        }
-        detenerEscaneoTokenQR();
-      }
     }
 
     function configurarTokenGitHub() {
@@ -1292,6 +1323,80 @@
       }
     }
 
+    async function enviarProxyCSV() {
+      const items = getPending();
+      if (!items.length) return estado('No hay pendientes para enviar.', false);
+
+      const proxyUrl = getSyncProxyUrl();
+      if (!proxyUrl) {
+        return estado('Falta URL sincronización central.', false);
+      }
+
+      const owner = BASE_OWNER;
+      const repo = BASE_REPO;
+      const branch = repoBranchInUse;
+      const folder = getValue('ghFolder') || 'Bases de datos';
+
+      try {
+        validarColeccionRegistros(items, 'pendientes');
+        const deviceId = localStorage.getItem(KEY_DEVICE_ID) || ('device-' + Math.random().toString(36).slice(2, 8));
+        localStorage.setItem(KEY_DEVICE_ID, deviceId);
+
+        const mainPayload = {
+          owner,
+          repo,
+          branch,
+          folder,
+          type: 'main',
+          deviceId,
+          items: items.map((item) => ({ ...item, dispositivo_id: deviceId }))
+        };
+
+        const mainRes = await fetch(proxyUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(mainPayload)
+        });
+
+        const mainBody = await mainRes.json().catch(() => ({}));
+        if (!mainRes.ok || !mainBody.ok) {
+          throw new Error(mainBody.message || `Proxy error ${mainRes.status}`);
+        }
+
+        const reemplazadosPend = getReemplazadosPending();
+        if (reemplazadosPend.length) {
+          const remPayload = {
+            owner,
+            repo,
+            branch,
+            folder: `${folder}/Remplazados`,
+            type: 'reemplazados',
+            deviceId,
+            items: reemplazadosPend.map((item) => ({ ...item, dispositivo_id: deviceId }))
+          };
+
+          const remRes = await fetch(proxyUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(remPayload)
+          });
+
+          const remBody = await remRes.json().catch(() => ({}));
+          if (!remRes.ok || !remBody.ok) {
+            throw new Error(remBody.message || `Proxy remplazados error ${remRes.status}`);
+          }
+
+          setReemplazadosPending([]);
+        }
+
+        localStorage.setItem(KEY_ENVIADOS, JSON.stringify([...(JSON.parse(localStorage.getItem(KEY_ENVIADOS) || '[]')), ...items]));
+        setPending([]);
+        estado('Envío correcto a sincronización central.');
+      } catch (error) {
+        estado('Error en sincronización central: ' + error.message, false);
+      }
+    }
+
     function redDisponibleSoloWifi() {
       if (!navigator.onLine) {
         return { ok: false, motivo: 'Sin internet/WiFi.' };
@@ -1325,6 +1430,13 @@
       const items = getPending();
       if (!items.length) {
         estado('No hay registros pendientes por enviar.');
+        return;
+      }
+
+      const proxyUrl = getSyncProxyUrl();
+      if (proxyUrl) {
+        estado('Enviando registros a sincronización central...');
+        await enviarProxyCSV();
         return;
       }
 

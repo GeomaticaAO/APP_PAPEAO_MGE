@@ -31,14 +31,14 @@ export default {
 
       const mainHeaders = [
         'local_id','capturista_nombre','capturista_telefono','clave_vivienda','nombre','edad','telefono',
-        'calle','numero','manzana_inegi','manzana','lote','curp','coordenadas_gps','gps_fecha','direccion_base','fecha_captura'
+        'calle','numero','manzana_inegi','manzana','lote','curp','coordenadas_gps','direccion_base','fecha_captura'
       ];
 
       const remHeaders = [
         'reemplazo_id','fecha_reemplazo','clave_vivienda','capturista_reemplazo',
         'local_id_anterior','local_id_actual',
-        'nombre_anterior','edad_anterior','telefono_anterior','calle_anterior','numero_anterior','manzana_inegi_anterior','manzana_anterior','lote_anterior','curp_anterior','coordenadas_gps_anterior','gps_fecha_anterior','direccion_base_anterior',
-        'nombre_nuevo','edad_nueva','telefono_nuevo','calle_nueva','numero_nuevo','manzana_inegi_nueva','manzana_nueva','lote_nuevo','curp_nuevo','coordenadas_gps_nueva','gps_fecha_nueva','direccion_base_nueva'
+        'nombre_anterior','edad_anterior','telefono_anterior','calle_anterior','numero_anterior','manzana_inegi_anterior','manzana_anterior','lote_anterior','curp_anterior','coordenadas_gps_anterior','direccion_base_anterior',
+        'nombre_nuevo','edad_nueva','telefono_nuevo','calle_nueva','numero_nuevo','manzana_inegi_nueva','manzana_nueva','lote_nuevo','curp_nuevo','coordenadas_gps_nueva','direccion_base_nueva'
       ];
 
       const headers = type === 'reemplazados' ? remHeaders : mainHeaders;

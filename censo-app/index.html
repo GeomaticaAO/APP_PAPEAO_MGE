@@ -177,6 +177,8 @@
     const PHOTO_MAX_WIDTH = 960;
     const PHOTO_MAX_HEIGHT = 720;
     const PHOTO_JPEG_QUALITY = 0.4;
+    const PHOTO_DB_NAME = 'papeao_censo_photos_v1';
+    const PHOTO_DB_STORE = 'photos';
     const BRANCH_CANDIDATES = ['main', 'master'];
     const BASE_FILE_CANDIDATES = [
       'TOTAL_JEFAS_FAMILIA.xlsx',
@@ -224,6 +226,7 @@
     let repoBranchInUse = BASE_BRANCH;
     let sessionUser = null;
     let fotosCredencial = { 1: null, 2: null };
+    let photosDbPromise = null;
 
     function migrateLegacyStorageIfNeeded() {
       try {
@@ -1075,6 +1078,101 @@
       if (input2) input2.value = '';
     }
 
+    function fotoKey(localId, slot) {
+      return `${String(localId || '').trim()}_${slot}`;
+    }
+
+    async function openPhotosDb() {
+      if (!window.indexedDB) {
+        throw new Error('Este navegador no soporta almacenamiento local de fotos (IndexedDB).');
+      }
+      if (photosDbPromise) return photosDbPromise;
+
+      photosDbPromise = new Promise((resolve, reject) => {
+        const request = indexedDB.open(PHOTO_DB_NAME, 1);
+
+        request.onupgradeneeded = () => {
+          const db = request.result;
+          if (!db.objectStoreNames.contains(PHOTO_DB_STORE)) {
+            const store = db.createObjectStore(PHOTO_DB_STORE, { keyPath: 'key' });
+            store.createIndex('local_id', 'local_id', { unique: false });
+          }
+        };
+
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error('No se pudo abrir base local de fotos.'));
+      });
+
+      return photosDbPromise;
+    }
+
+    async function guardarFotoOffline({ localId, slot, filePath, dataUrl, sizeKb }) {
+      const db = await openPhotosDb();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(PHOTO_DB_STORE, 'readwrite');
+        const store = tx.objectStore(PHOTO_DB_STORE);
+        store.put({
+          key: fotoKey(localId, slot),
+          local_id: String(localId || ''),
+          slot,
+          file_path: String(filePath || ''),
+          data_url: String(dataUrl || ''),
+          size_kb: Number(sizeKb || 0),
+          saved_at: new Date().toISOString()
+        });
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error || new Error('No se pudo guardar foto offline.'));
+      });
+    }
+
+    async function obtenerFotoOffline(localId, slot) {
+      const db = await openPhotosDb();
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(PHOTO_DB_STORE, 'readonly');
+        const store = tx.objectStore(PHOTO_DB_STORE);
+        const request = store.get(fotoKey(localId, slot));
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error || new Error('No se pudo leer foto offline.'));
+      });
+    }
+
+    async function eliminarFotoOffline(localId, slot) {
+      const db = await openPhotosDb();
+      await new Promise((resolve, reject) => {
+        const tx = db.transaction(PHOTO_DB_STORE, 'readwrite');
+        const store = tx.objectStore(PHOTO_DB_STORE);
+        store.delete(fotoKey(localId, slot));
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error || new Error('No se pudo eliminar foto offline.'));
+      });
+    }
+
+    async function guardarFotosDelRegistroOffline(localId, foto1Path, foto2Path) {
+      await guardarFotoOffline({
+        localId,
+        slot: 1,
+        filePath: foto1Path,
+        dataUrl: fotosCredencial[1]?.dataUrl,
+        sizeKb: fotosCredencial[1]?.sizeKb
+      });
+      await guardarFotoOffline({
+        localId,
+        slot: 2,
+        filePath: foto2Path,
+        dataUrl: fotosCredencial[2]?.dataUrl,
+        sizeKb: fotosCredencial[2]?.sizeKb
+      });
+    }
+
+    async function eliminarFotosDeRegistros(items) {
+      for (const item of items) {
+        const localId = item?.local_id;
+        if (!localId) continue;
+        await eliminarFotoOffline(localId, 1);
+        await eliminarFotoOffline(localId, 2);
+      }
+    }
+
     async function procesarFotoCredencial(slot, event) {
       try {
         const file = event?.target?.files?.[0];
@@ -1089,7 +1187,7 @@
       }
     }
 
-    function guardarOffline() {
+    async function guardarOffline() {
       if (!ensureAuthenticated()) return;
       const clave = valor('clave_vivienda');
       if (!clave) return estado('La clave vivienda es obligatoria.', false);
@@ -1125,6 +1223,13 @@
         direccion_base: valor('direccion_base'),
         fecha_captura: new Date().toISOString()
       };
+
+      try {
+        await guardarFotosDelRegistroOffline(recordLocalId, item.foto_1_path, item.foto_2_path);
+      } catch (error) {
+        estado('No se pudieron guardar las fotos offline: ' + String(error?.message || 'Error desconocido'), false);
+        return;
+      }
 
       if (existingIndex >= 0) {
         appendReemplazado(items[existingIndex], item);
@@ -1207,9 +1312,34 @@
       });
     }
 
-    async function uploadCsvFileToGithub({ owner, repo, branch, filePath, csv, token, commitMessage }) {
-      const contentB64 = btoa(unescape(encodeURIComponent(csv)));
+    async function getGithubFileSha({ owner, repo, branch, filePath, token }) {
       const encodedFilePath = encodeURIComponent(filePath).replace(/%2F/g, '/');
+      const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${encodedFilePath}?ref=${branch}`, {
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Accept': 'application/vnd.github+json'
+        }
+      });
+
+      if (response.status === 404) return '';
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err.message || `Error HTTP ${response.status}`);
+      }
+
+      const body = await response.json().catch(() => ({}));
+      return String(body.sha || '').trim();
+    }
+
+    async function uploadBase64FileToGithub({ owner, repo, branch, filePath, contentB64, token, commitMessage }) {
+      const encodedFilePath = encodeURIComponent(filePath).replace(/%2F/g, '/');
+      const sha = await getGithubFileSha({ owner, repo, branch, filePath, token });
+      const body = {
+        message: commitMessage,
+        content: contentB64,
+        branch
+      };
+      if (sha) body.sha = sha;
 
       const response = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${encodedFilePath}`, {
         method: 'PUT',
@@ -1218,11 +1348,7 @@
           'Accept': 'application/vnd.github+json',
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          message: commitMessage,
-          content: contentB64,
-          branch
-        })
+        body: JSON.stringify(body)
       });
 
       if (!response.ok) {
@@ -1231,6 +1357,56 @@
           throw new Error('Token inválido o vencido. Configura un token nuevo en Configuración técnica.');
         }
         throw new Error(err.message || `Error HTTP ${response.status}`);
+      }
+    }
+
+    function dataUrlToBase64(dataUrl) {
+      const raw = String(dataUrl || '');
+      const idx = raw.indexOf(',');
+      if (idx < 0) {
+        throw new Error('Foto inválida para sincronización.');
+      }
+      return raw.slice(idx + 1);
+    }
+
+    async function uploadCsvFileToGithub({ owner, repo, branch, filePath, csv, token, commitMessage }) {
+      const contentB64 = btoa(unescape(encodeURIComponent(csv)));
+      await uploadBase64FileToGithub({ owner, repo, branch, filePath, contentB64, token, commitMessage });
+    }
+
+    async function uploadFotoFileToGithub({ owner, repo, branch, filePath, dataUrl, token, commitMessage }) {
+      const contentB64 = dataUrlToBase64(dataUrl);
+      await uploadBase64FileToGithub({ owner, repo, branch, filePath, contentB64, token, commitMessage });
+    }
+
+    async function subirFotosPendientesGithub({ owner, repo, branch, token, items }) {
+      for (const item of items) {
+        const localId = String(item?.local_id || '').trim();
+        const clave = String(item?.clave_vivienda || localId);
+        if (!localId) {
+          throw new Error('Registro sin local_id al subir fotos.');
+        }
+
+        for (const slot of [1, 2]) {
+          const filePath = String(item[`foto_${slot}_path`] || '').trim();
+          if (!filePath) {
+            throw new Error(`Falta ruta de foto ${slot} en registro ${clave}.`);
+          }
+          const photo = await obtenerFotoOffline(localId, slot);
+          if (!photo || !photo.data_url) {
+            throw new Error(`Falta foto ${slot} guardada offline para ${clave}.`);
+          }
+
+          await uploadFotoFileToGithub({
+            owner,
+            repo,
+            branch,
+            filePath,
+            dataUrl: photo.data_url,
+            token,
+            commitMessage: `Foto credencial ${slot} ${localId}`
+          });
+        }
       }
     }
 
@@ -1510,9 +1686,13 @@
       try {
         validarColeccionRegistros(items, 'pendientes');
         const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-        const deviceId = localStorage.getItem(KEY_DEVICE_ID) || ('device-' + Math.random().toString(36).slice(2, 8));
-        localStorage.setItem(KEY_DEVICE_ID, deviceId);
+        const deviceId = getDeviceId();
         const capturista = normalizeName(items[0]?.capturista_nombre || 'sin_capturista');
+
+        estado('Subiendo fotos de credencial a GitHub...');
+        await subirFotosPendientesGithub({ owner, repo, branch, token, items });
+
+        estado('Subiendo CSV principal...');
         const csv = itemsToCsv(items);
         validarIntegridadCsv(csv, items.length, 'pendientes');
         const filePath = `${folder}/${capturista}/${deviceId}/${stamp}.csv`;
@@ -1529,6 +1709,7 @@
 
         const reemplazadosPend = getReemplazadosPending();
         if (reemplazadosPend.length) {
+          estado('Subiendo CSV de remplazados...');
           validarColeccionRegistros(reemplazadosPend, 'remplazados');
           const csvReemplazados = reemplazadosToCsv(reemplazadosPend);
           validarIntegridadCsv(csvReemplazados, reemplazadosPend.length, 'remplazados');
@@ -1547,6 +1728,7 @@
           setReemplazadosPending([]);
         }
 
+        await eliminarFotosDeRegistros(items);
         localStorage.setItem(KEY_ENVIADOS, JSON.stringify([...(JSON.parse(localStorage.getItem(KEY_ENVIADOS)||'[]')), ...items]));
         setPending([]);
         estado(`Envío correcto a GitHub: ${filePath}`);

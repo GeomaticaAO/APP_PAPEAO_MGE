@@ -41,7 +41,7 @@
     .photo-preview { width:100%; min-height:120px; max-height:220px; object-fit:contain; border:1px solid #e5e7eb; border-radius:8px; background:#f9fafb; }
     .photo-hint { font-size:12px; color:#6b7280; }
     .file-hidden { position:absolute; left:-9999px; width:1px; height:1px; opacity:0; pointer-events:none; }
-    .file-trigger { display:inline-flex; align-items:center; justify-content:center; }
+    .file-trigger { display:inline-flex; align-items:center; justify-content:center; border:0; color:#fff; border-radius:8px; padding:10px 14px; cursor:pointer; font-weight:bold; line-height:1; user-select:none; }
   </style>
 </head>
 <body>
@@ -94,6 +94,7 @@
       <div><label>Manzana (dirección/campo)</label><input id="manzana" /></div>
       <div><label>Lote</label><input id="lote" /></div>
       <div><label>CURP</label><input id="curp" /></div>
+      <div class="full"><label>Dirección base</label><input id="direccion_base" readonly /></div>
       <div class="full row" style="margin-top:0">
         <button id="btnCapturarGPS" class="btn-gray" onclick="capturarCoordenadasGPS()">Capturar coordenadas GPS</button>
       </div>
@@ -119,7 +120,6 @@
         <input id="foto1_input" class="file-hidden" type="file" accept="image/*" capture="environment" onchange="procesarFotoCredencial(1, event)" />
         <input id="foto2_input" class="file-hidden" type="file" accept="image/*" capture="environment" onchange="procesarFotoCredencial(2, event)" />
       </div>
-      <div class="full"><label>Dirección base</label><input id="direccion_base" readonly /></div>
     </div>
 
     <div class="row">
@@ -136,7 +136,6 @@
         <div><label>Repositorio</label><input id="ghRepo" value="APP_PAPEAO_MGE" readonly /></div>
         <div><label>Branch</label><input id="ghBranch" value="main" readonly /></div>
         <div><label>Carpeta destino</label><input id="ghFolder" value="Bases de datos" readonly /></div>
-        <div class="full" id="proxyInputRow"><label>URL sincronización central (sin token)</label><input id="sync_proxy_url" placeholder="https://tu-worker.workers.dev" /></div>
         <div class="full" id="tokenInputRow"><label>Token GitHub</label><input id="gh_token_input" type="password" placeholder="github_pat_..." /></div>
       </div>
       <div class="row" style="margin-top:10px" id="tokenButtonsRow">
@@ -1327,7 +1326,6 @@
 
     function refreshTokenStatus() {
       const hasToken = Boolean(getGithubWriteToken());
-      const proxyUrl = getSyncProxyUrl();
       const el = document.getElementById('tokenEstado');
       if (!el) return;
       const input = document.getElementById('gh_token_input');
@@ -1335,20 +1333,11 @@
         const saved = String(localStorage.getItem(KEY_GH_TOKEN) || '').trim();
         if (saved) input.value = saved;
       }
-      const proxyInput = document.getElementById('sync_proxy_url');
-      if (proxyInput) {
-        proxyInput.value = proxyUrl;
-      }
       const rowInput = document.getElementById('tokenInputRow');
       const rowButtons = document.getElementById('tokenButtonsRow');
       if (isInternalTokenMode()) {
         if (rowInput) rowInput.style.display = 'none';
         if (rowButtons) rowButtons.style.display = 'none';
-      }
-      if (proxyUrl) {
-        el.textContent = 'Sincronización central activa (sin token en este celular)';
-        el.className = 'ok';
-        return;
       }
       el.textContent = hasToken ? 'Token configurado (listo para sincronizar manualmente)' : 'Token no configurado';
       el.className = hasToken ? 'ok' : 'muted';
@@ -1676,13 +1665,6 @@
         return;
       }
 
-      const proxyUrl = getSyncProxyUrl();
-      if (proxyUrl) {
-        estado('Enviando registros a sincronización central...');
-        await enviarProxyCSV();
-        return;
-      }
-
       const token = getGithubWriteToken();
       if (!token) {
         const fileName = descargarPendientesCSV(items);
@@ -1782,6 +1764,7 @@
     }
 
     migrateLegacyStorageIfNeeded();
+    clearSyncProxyUrl();
     actualizarVistaFoto(1);
     actualizarVistaFoto(2);
     applySetupFromUrl();

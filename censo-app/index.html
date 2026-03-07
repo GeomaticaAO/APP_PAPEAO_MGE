@@ -41,6 +41,7 @@
     .photo-preview { width:100%; min-height:120px; max-height:220px; object-fit:contain; border:1px solid #e5e7eb; border-radius:8px; background:#f9fafb; }
     .photo-hint { font-size:12px; color:#6b7280; }
     .file-hidden { position:absolute; left:-9999px; width:1px; height:1px; opacity:0; pointer-events:none; }
+    .file-trigger { display:inline-flex; align-items:center; justify-content:center; }
   </style>
 </head>
 <body>
@@ -100,8 +101,8 @@
       <div class="full photo-guide">
         <label>Fotos de credencial (2)</label>
         <div class="row" style="margin-top:0">
-          <button type="button" class="btn-gray" onclick="tomarFotoCredencial(1)">Tomar foto 1</button>
-          <button type="button" class="btn-gray" onclick="tomarFotoCredencial(2)">Tomar foto 2</button>
+          <label for="foto1_input" class="btn-gray file-trigger">Tomar foto 1</label>
+          <label for="foto2_input" class="btn-gray file-trigger">Tomar foto 2</label>
         </div>
         <div class="grid" style="margin-top:10px">
           <div>

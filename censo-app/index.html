@@ -40,6 +40,7 @@
     .photo-guide { border:2px dashed #c9a4ae; border-radius:10px; padding:10px; background:#fff; }
     .photo-preview { width:100%; min-height:120px; max-height:220px; object-fit:contain; border:1px solid #e5e7eb; border-radius:8px; background:#f9fafb; }
     .photo-hint { font-size:12px; color:#6b7280; }
+    .file-hidden { position:absolute; left:-9999px; width:1px; height:1px; opacity:0; pointer-events:none; }
   </style>
 </head>
 <body>
@@ -102,7 +103,6 @@
           <button type="button" class="btn-gray" onclick="tomarFotoCredencial(1)">Tomar foto 1</button>
           <button type="button" class="btn-gray" onclick="tomarFotoCredencial(2)">Tomar foto 2</button>
         </div>
-        <div class="photo-hint" style="margin-top:6px">Guía: encuadra toda la credencial dentro del recuadro y evita reflejos. La app reduce la calidad automáticamente.</div>
         <div class="grid" style="margin-top:10px">
           <div>
             <label>Vista previa foto 1</label>
@@ -115,8 +115,8 @@
             <div id="foto2_meta" class="photo-hint" style="margin-top:4px">Sin captura</div>
           </div>
         </div>
-        <input id="foto1_input" type="file" accept="image/*" capture="environment" style="display:none" onchange="procesarFotoCredencial(1, event)" />
-        <input id="foto2_input" type="file" accept="image/*" capture="environment" style="display:none" onchange="procesarFotoCredencial(2, event)" />
+        <input id="foto1_input" class="file-hidden" type="file" accept="image/*" capture="environment" onchange="procesarFotoCredencial(1, event)" />
+        <input id="foto2_input" class="file-hidden" type="file" accept="image/*" capture="environment" onchange="procesarFotoCredencial(2, event)" />
       </div>
       <div class="full"><label>Dirección base</label><input id="direccion_base" readonly /></div>
     </div>
@@ -990,7 +990,19 @@
       const input = document.getElementById(slot === 1 ? 'foto1_input' : 'foto2_input');
       if (!input) return;
       input.value = '';
-      input.click();
+      try {
+        if (typeof input.showPicker === 'function') {
+          input.showPicker();
+        } else {
+          input.click();
+        }
+      } catch {
+        try {
+          input.click();
+        } catch {
+          estado('No se pudo abrir la cámara en este navegador. Intenta en Chrome móvil actualizado.', false);
+        }
+      }
     }
 
     function readFileAsDataUrl(file) {

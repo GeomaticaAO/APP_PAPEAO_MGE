@@ -1002,10 +1002,25 @@
       return deviceId;
     }
 
-    function construirRutaFoto(localId, slot) {
+    function tipoFotoNombre(slot) {
+      if (slot === 1) return 'frontal';
+      if (slot === 2) return 'reverso';
+      return 'comprobante';
+    }
+
+    function normalizarCurpParaArchivo(curp) {
+      return String(curp || '')
+        .trim()
+        .toUpperCase()
+        .replace(/[^A-Z0-9]/g, '');
+    }
+
+    function construirRutaFoto(curp, slot) {
       const capturista = normalizeName(sessionUser?.nombre || 'sin_capturista');
       const deviceId = getDeviceId();
-      return `fotos/${capturista}/${deviceId}/${localId}_${slot}.jpg`;
+      const curpSafe = normalizarCurpParaArchivo(curp) || 'SINCURP';
+      const tipo = tipoFotoNombre(slot);
+      return `fotos/${capturista}/${deviceId}/${curpSafe}_${tipo}.jpg`;
     }
 
     function tomarFotoCredencial(slot) {
@@ -1208,6 +1223,8 @@
       if (!ensureAuthenticated()) return;
       const clave = valor('clave_vivienda');
       if (!clave) return estado('La clave vivienda es obligatoria.', false);
+      const curp = valor('curp');
+      if (!curp) return estado('El CURP es obligatorio para nombrar las fotos.', false);
       const coordenadasGps = valor('coordenadas_gps');
       if (!coordenadasGps) return estado('Debes capturar coordenadas GPS antes de guardar.', false);
       if (PHOTO_SLOTS.some((slot) => !fotosCredencial[slot])) return estado('Debes capturar Frontal, Reverso y Comprobante de Domicilio antes de guardar.', false);
@@ -1226,9 +1243,9 @@
         edad: valor('edad') ? Number(valor('edad')) : null,
         telefono: valor('telefono'),
         correo_electronico: valor('correo_electronico'),
-        foto_1_path: construirRutaFoto(recordLocalId, 1),
-        foto_2_path: construirRutaFoto(recordLocalId, 2),
-        foto_3_path: construirRutaFoto(recordLocalId, 3),
+        foto_1_path: construirRutaFoto(curp, 1),
+        foto_2_path: construirRutaFoto(curp, 2),
+        foto_3_path: construirRutaFoto(curp, 3),
         foto_1_kb: fotosCredencial[1]?.sizeKb || '',
         foto_2_kb: fotosCredencial[2]?.sizeKb || '',
         foto_3_kb: fotosCredencial[3]?.sizeKb || '',
@@ -1237,7 +1254,7 @@
         manzana_inegi: valor('manzana_inegi'),
         manzana: valor('manzana'),
         lote: valor('lote'),
-        curp: valor('curp'),
+        curp,
         colonia: valor('colonia'),
         codigo_postal: valor('codigo_postal'),
         coordenadas_gps: coordenadasGps,

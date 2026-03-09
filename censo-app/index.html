@@ -1025,7 +1025,8 @@
 
     function tomarFotoCredencial(slot) {
       if (!ensureAuthenticated()) return;
-      const input = document.getElementById(slot === 1 ? 'foto1_input' : 'foto2_input');
+      const inputMap = { 1: 'foto1_input', 2: 'foto2_input', 3: 'foto3_input' };
+      const input = document.getElementById(inputMap[slot] || 'foto1_input');
       if (!input) return;
       input.value = '';
       try {
@@ -1089,8 +1090,10 @@
     }
 
     function actualizarVistaFoto(slot) {
-      const preview = document.getElementById(slot === 1 ? 'foto1_preview' : 'foto2_preview');
-      const meta = document.getElementById(slot === 1 ? 'foto1_meta' : 'foto2_meta');
+      const previewMap = { 1: 'foto1_preview', 2: 'foto2_preview', 3: 'foto3_preview' };
+      const metaMap = { 1: 'foto1_meta', 2: 'foto2_meta', 3: 'foto3_meta' };
+      const preview = document.getElementById(previewMap[slot] || 'foto1_preview');
+      const meta = document.getElementById(metaMap[slot] || 'foto1_meta');
       const foto = fotosCredencial[slot];
 
       if (!foto) {
@@ -1853,22 +1856,7 @@
       if (!navigator.onLine) {
         return { ok: false, motivo: 'Sin internet/WiFi.' };
       }
-
-      const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-      if (!connection) {
-        return { ok: false, motivo: 'No se puede validar el tipo de red en este navegador. Para evitar datos móviles, activa WiFi y usa un navegador compatible.' };
-      }
-
-      const type = String(connection.type || '').toLowerCase();
-      if (type === 'cellular') {
-        return { ok: false, motivo: 'Conexión móvil detectada. La sincronización está bloqueada en datos móviles.' };
-      }
-
-      if (type === 'wifi' || type === 'ethernet') {
-        return { ok: true, motivo: '' };
-      }
-
-      return { ok: false, motivo: 'Red no WiFi detectada. La sincronización solo está permitida por WiFi.' };
+      return { ok: true, motivo: '' };
     }
 
     async function sincronizarManual() {

@@ -94,31 +94,40 @@
       <div><label>Manzana (dirección/campo)</label><input id="manzana" /></div>
       <div><label>Lote</label><input id="lote" /></div>
       <div><label>CURP</label><input id="curp" /></div>
+      <div><label>Colonia</label><input id="colonia" /></div>
+      <div><label>Código Postal</label><input id="codigo_postal" /></div>
       <div class="full"><label>Dirección base</label><input id="direccion_base" readonly /></div>
       <div class="full row" style="margin-top:0">
         <button id="btnCapturarGPS" class="btn-gray" onclick="capturarCoordenadasGPS()">Capturar coordenadas GPS</button>
       </div>
       <div class="full"><label>Coordenadas GPS</label><input id="coordenadas_gps" readonly placeholder="Ej: 19.432608,-99.133209" /></div>
       <div class="full photo-guide">
-        <label>Fotos de credencial (2)</label>
+        <label>Fotos de Documentos</label>
         <div class="row" style="margin-top:0">
-          <label for="foto1_input" class="btn-gray file-trigger">Tomar foto 1</label>
-          <label for="foto2_input" class="btn-gray file-trigger">Tomar foto 2</label>
+          <label for="foto1_input" class="btn-gray file-trigger">Frontal</label>
+          <label for="foto2_input" class="btn-gray file-trigger">Reverso</label>
+          <label for="foto3_input" class="btn-gray file-trigger">Comprobante de Domicilio</label>
         </div>
         <div class="grid" style="margin-top:10px">
           <div>
-            <label>Vista previa foto 1</label>
+            <label>Vista previa Frontal</label>
             <img id="foto1_preview" class="photo-preview" alt="Vista previa foto 1" />
             <div id="foto1_meta" class="photo-hint" style="margin-top:4px">Sin captura</div>
           </div>
           <div>
-            <label>Vista previa foto 2</label>
+            <label>Vista previa Reverso</label>
             <img id="foto2_preview" class="photo-preview" alt="Vista previa foto 2" />
             <div id="foto2_meta" class="photo-hint" style="margin-top:4px">Sin captura</div>
+          </div>
+          <div>
+            <label>Vista previa Comprobante</label>
+            <img id="foto3_preview" class="photo-preview" alt="Vista previa foto 3" />
+            <div id="foto3_meta" class="photo-hint" style="margin-top:4px">Sin captura</div>
           </div>
         </div>
         <input id="foto1_input" class="file-hidden" type="file" accept="image/*" capture="environment" onchange="procesarFotoCredencial(1, event)" />
         <input id="foto2_input" class="file-hidden" type="file" accept="image/*" capture="environment" onchange="procesarFotoCredencial(2, event)" />
+        <input id="foto3_input" class="file-hidden" type="file" accept="image/*" capture="environment" onchange="procesarFotoCredencial(3, event)" />
       </div>
     </div>
 
@@ -177,6 +186,7 @@
     const PHOTO_MAX_WIDTH = 960;
     const PHOTO_MAX_HEIGHT = 720;
     const PHOTO_JPEG_QUALITY = 0.4;
+    const PHOTO_SLOTS = [1, 2, 3];
     const PHOTO_DB_NAME = 'papeao_censo_photos_v1';
     const PHOTO_DB_STORE = 'photos';
     const BRANCH_CANDIDATES = ['main', 'master'];
@@ -225,7 +235,7 @@
     let repoFilesCache = null;
     let repoBranchInUse = BASE_BRANCH;
     let sessionUser = null;
-    let fotosCredencial = { 1: null, 2: null };
+    let fotosCredencial = { 1: null, 2: null, 3: null };
     let photosDbPromise = null;
 
     function migrateLegacyStorageIfNeeded() {
@@ -342,6 +352,8 @@
           manzana: firstValue(key, ['manzana direccion', 'manzana_direccion']),
           lote: firstValue(key, ['lote']),
           curp: firstValue(key, ['curp']),
+          colonia: firstValue(key, ['colonia']),
+          codigo_postal: firstValue(key, ['codigo postal', 'código postal', 'cp', 'codigo_postal']),
           direccion_base: firstValue(key, ['direccion', 'dirección']),
           raw_base: raw
         };
@@ -846,12 +858,15 @@
         correo_electronico_anterior: previousItem.correo_electronico,
         foto_1_path_anterior: previousItem.foto_1_path,
         foto_2_path_anterior: previousItem.foto_2_path,
+        foto_3_path_anterior: previousItem.foto_3_path,
         calle_anterior: previousItem.calle,
         numero_anterior: previousItem.numero,
         manzana_inegi_anterior: previousItem.manzana_inegi,
         manzana_anterior: previousItem.manzana,
         lote_anterior: previousItem.lote,
         curp_anterior: previousItem.curp,
+        colonia_anterior: previousItem.colonia,
+        codigo_postal_anterior: previousItem.codigo_postal,
         coordenadas_gps_anterior: previousItem.coordenadas_gps,
         direccion_base_anterior: previousItem.direccion_base,
         nombre_nuevo: currentItem.nombre,
@@ -860,12 +875,15 @@
         correo_electronico_nuevo: currentItem.correo_electronico,
         foto_1_path_nuevo: currentItem.foto_1_path,
         foto_2_path_nuevo: currentItem.foto_2_path,
+        foto_3_path_nuevo: currentItem.foto_3_path,
         calle_nueva: currentItem.calle,
         numero_nuevo: currentItem.numero,
         manzana_inegi_nueva: currentItem.manzana_inegi,
         manzana_nueva: currentItem.manzana,
         lote_nuevo: currentItem.lote,
         curp_nuevo: currentItem.curp,
+        colonia_nueva: currentItem.colonia,
+        codigo_postal_nueva: currentItem.codigo_postal,
         coordenadas_gps_nueva: currentItem.coordenadas_gps,
         direccion_base_nueva: currentItem.direccion_base
       };
@@ -905,6 +923,8 @@
       setValor('manzana', hit.manzana);
       setValor('lote', hit.lote);
       setValor('curp', hit.curp);
+      setValor('colonia', hit.colonia);
+      setValor('codigo_postal', hit.codigo_postal);
       setValor('coordenadas_gps', '');
       setValor('direccion_base', hit.direccion_base);
       limpiarFotosCredencial();
@@ -1069,13 +1089,14 @@
     }
 
     function limpiarFotosCredencial() {
-      fotosCredencial = { 1: null, 2: null };
-      actualizarVistaFoto(1);
-      actualizarVistaFoto(2);
+      fotosCredencial = { 1: null, 2: null, 3: null };
+      PHOTO_SLOTS.forEach((slot) => actualizarVistaFoto(slot));
       const input1 = document.getElementById('foto1_input');
       const input2 = document.getElementById('foto2_input');
+      const input3 = document.getElementById('foto3_input');
       if (input1) input1.value = '';
       if (input2) input2.value = '';
+      if (input3) input3.value = '';
     }
 
     function fotoKey(localId, slot) {
@@ -1147,29 +1168,25 @@
       });
     }
 
-    async function guardarFotosDelRegistroOffline(localId, foto1Path, foto2Path) {
-      await guardarFotoOffline({
-        localId,
-        slot: 1,
-        filePath: foto1Path,
-        dataUrl: fotosCredencial[1]?.dataUrl,
-        sizeKb: fotosCredencial[1]?.sizeKb
-      });
-      await guardarFotoOffline({
-        localId,
-        slot: 2,
-        filePath: foto2Path,
-        dataUrl: fotosCredencial[2]?.dataUrl,
-        sizeKb: fotosCredencial[2]?.sizeKb
-      });
+    async function guardarFotosDelRegistroOffline(localId, item) {
+      for (const slot of PHOTO_SLOTS) {
+        await guardarFotoOffline({
+          localId,
+          slot,
+          filePath: item[`foto_${slot}_path`],
+          dataUrl: fotosCredencial[slot]?.dataUrl,
+          sizeKb: fotosCredencial[slot]?.sizeKb
+        });
+      }
     }
 
     async function eliminarFotosDeRegistros(items) {
       for (const item of items) {
         const localId = item?.local_id;
         if (!localId) continue;
-        await eliminarFotoOffline(localId, 1);
-        await eliminarFotoOffline(localId, 2);
+        for (const slot of PHOTO_SLOTS) {
+          await eliminarFotoOffline(localId, slot);
+        }
       }
     }
 
@@ -1193,7 +1210,7 @@
       if (!clave) return estado('La clave vivienda es obligatoria.', false);
       const coordenadasGps = valor('coordenadas_gps');
       if (!coordenadasGps) return estado('Debes capturar coordenadas GPS antes de guardar.', false);
-      if (!fotosCredencial[1] || !fotosCredencial[2]) return estado('Debes capturar Foto 1 y Foto 2 de la credencial antes de guardar.', false);
+      if (PHOTO_SLOTS.some((slot) => !fotosCredencial[slot])) return estado('Debes capturar Frontal, Reverso y Comprobante de Domicilio antes de guardar.', false);
 
       const items = getPending();
       const existingIndex = items.findIndex((row) => String(row.clave_vivienda || '').trim() === clave.trim());
@@ -1211,21 +1228,25 @@
         correo_electronico: valor('correo_electronico'),
         foto_1_path: construirRutaFoto(recordLocalId, 1),
         foto_2_path: construirRutaFoto(recordLocalId, 2),
+        foto_3_path: construirRutaFoto(recordLocalId, 3),
         foto_1_kb: fotosCredencial[1]?.sizeKb || '',
         foto_2_kb: fotosCredencial[2]?.sizeKb || '',
+        foto_3_kb: fotosCredencial[3]?.sizeKb || '',
         calle: valor('calle'),
         numero: valor('numero'),
         manzana_inegi: valor('manzana_inegi'),
         manzana: valor('manzana'),
         lote: valor('lote'),
         curp: valor('curp'),
+        colonia: valor('colonia'),
+        codigo_postal: valor('codigo_postal'),
         coordenadas_gps: coordenadasGps,
         direccion_base: valor('direccion_base'),
         fecha_captura: new Date().toISOString()
       };
 
       try {
-        await guardarFotosDelRegistroOffline(recordLocalId, item.foto_1_path, item.foto_2_path);
+        await guardarFotosDelRegistroOffline(recordLocalId, item);
       } catch (error) {
         estado('No se pudieron guardar las fotos offline: ' + String(error?.message || 'Error desconocido'), false);
         return;
@@ -1254,7 +1275,7 @@
     }
 
     function itemsToCsv(items) {
-      const headers = ['local_id','capturista_nombre','capturista_telefono','clave_vivienda','nombre','edad','telefono','correo_electronico','foto_1_path','foto_2_path','foto_1_kb','foto_2_kb','calle','numero','manzana_inegi','manzana','lote','curp','coordenadas_gps','direccion_base','fecha_captura'];
+      const headers = ['local_id','capturista_nombre','capturista_telefono','clave_vivienda','nombre','edad','telefono','correo_electronico','foto_1_path','foto_2_path','foto_3_path','foto_1_kb','foto_2_kb','foto_3_kb','calle','numero','manzana_inegi','manzana','lote','curp','colonia','codigo_postal','coordenadas_gps','direccion_base','fecha_captura'];
       const lines = [headers.join(',')];
       items.forEach((item) => {
         const line = headers.map((h) => csvEscape(item[h])).join(',');
@@ -1267,8 +1288,8 @@
       const headers = [
         'reemplazo_id','fecha_reemplazo','clave_vivienda','capturista_reemplazo',
         'local_id_anterior','local_id_actual',
-        'nombre_anterior','edad_anterior','telefono_anterior','correo_electronico_anterior','foto_1_path_anterior','foto_2_path_anterior','calle_anterior','numero_anterior','manzana_inegi_anterior','manzana_anterior','lote_anterior','curp_anterior','coordenadas_gps_anterior','direccion_base_anterior',
-        'nombre_nuevo','edad_nueva','telefono_nuevo','correo_electronico_nuevo','foto_1_path_nuevo','foto_2_path_nuevo','calle_nueva','numero_nuevo','manzana_inegi_nueva','manzana_nueva','lote_nuevo','curp_nuevo','coordenadas_gps_nueva','direccion_base_nueva'
+        'nombre_anterior','edad_anterior','telefono_anterior','correo_electronico_anterior','foto_1_path_anterior','foto_2_path_anterior','foto_3_path_anterior','calle_anterior','numero_anterior','manzana_inegi_anterior','manzana_anterior','lote_anterior','curp_anterior','colonia_anterior','codigo_postal_anterior','coordenadas_gps_anterior','direccion_base_anterior',
+        'nombre_nuevo','edad_nueva','telefono_nuevo','correo_electronico_nuevo','foto_1_path_nuevo','foto_2_path_nuevo','foto_3_path_nuevo','calle_nueva','numero_nuevo','manzana_inegi_nueva','manzana_nueva','lote_nuevo','curp_nuevo','colonia_nueva','codigo_postal_nueva','coordenadas_gps_nueva','direccion_base_nueva'
       ];
       const lines = [headers.join(',')];
       items.forEach((item) => {
@@ -1387,7 +1408,7 @@
           throw new Error('Registro sin local_id al subir fotos.');
         }
 
-        for (const slot of [1, 2]) {
+        for (const slot of PHOTO_SLOTS) {
           const filePath = String(item[`foto_${slot}_path`] || '').trim();
           if (!filePath) {
             throw new Error(`Falta ruta de foto ${slot} en registro ${clave}.`);
@@ -1404,7 +1425,7 @@
             filePath,
             dataUrl: photo.data_url,
             token,
-            commitMessage: `Foto credencial ${slot} ${localId}`
+            commitMessage: `Foto documento ${slot} ${localId}`
           });
         }
       }
@@ -1689,7 +1710,7 @@
         const deviceId = getDeviceId();
         const capturista = normalizeName(items[0]?.capturista_nombre || 'sin_capturista');
 
-        estado('Subiendo fotos de credencial a GitHub...');
+        estado('Subiendo fotos de documentos a GitHub...');
         await subirFotosPendientesGithub({ owner, repo, branch, token, items });
 
         estado('Subiendo CSV principal...');
@@ -1875,12 +1896,15 @@
         correo_electronico: item.correo_electronico_nuevo,
         foto_1_path: item.foto_1_path_nuevo,
         foto_2_path: item.foto_2_path_nuevo,
+        foto_3_path: item.foto_3_path_nuevo,
         calle: item.calle_nueva,
         numero: item.numero_nuevo,
         manzana_inegi: item.manzana_inegi_nueva,
         manzana: item.manzana_nueva,
         lote: item.lote_nuevo,
         curp: item.curp_nuevo,
+        colonia: item.colonia_nueva,
+        codigo_postal: item.codigo_postal_nueva,
         coordenadas_gps: item.coordenadas_gps_nueva,
         direccion_base: item.direccion_base_nueva,
         fecha_captura: item.fecha_reemplazo
@@ -1893,8 +1917,8 @@
       }
 
       const headers = [
-        'estado_sync','local_id','capturista_nombre','capturista_telefono','clave_vivienda','nombre','edad','telefono','correo_electronico','foto_1_path','foto_2_path',
-        'calle','numero','manzana_inegi','manzana','lote','curp','coordenadas_gps','direccion_base','fecha_captura'
+        'estado_sync','local_id','capturista_nombre','capturista_telefono','clave_vivienda','nombre','edad','telefono','correo_electronico','foto_1_path','foto_2_path','foto_3_path',
+        'calle','numero','manzana_inegi','manzana','lote','curp','colonia','codigo_postal','coordenadas_gps','direccion_base','fecha_captura'
       ];
 
       const lines = [headers.join(',')];
@@ -1947,8 +1971,7 @@
 
     migrateLegacyStorageIfNeeded();
     clearSyncProxyUrl();
-    actualizarVistaFoto(1);
-    actualizarVistaFoto(2);
+    PHOTO_SLOTS.forEach((slot) => actualizarVistaFoto(slot));
     applySetupFromUrl();
     pintar();
     refreshTokenStatus();

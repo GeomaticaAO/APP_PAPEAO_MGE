@@ -86,6 +86,8 @@
       </div>
 
       <div><label>Nombre</label><input id="nombre" /></div>
+      <div><label>Apellido Paterno</label><input id="apellido_paterno" /></div>
+      <div><label>Apellido Materno</label><input id="apellido_materno" /></div>
       <div><label>Edad</label><input id="edad" type="number" /></div>
       <div><label>Teléfono</label><input id="telefono" /></div>
       <div><label>Correo electrónico</label><input id="correo_electronico" type="email" /></div>
@@ -271,6 +273,25 @@
       }
     }
 
+    function descomponerNombreCompleto(nombreCompleto = '') {
+      const partes = String(nombreCompleto || '').trim().split(/\s+/).filter(Boolean);
+      if (!partes.length) return { nombre: '', apellido_paterno: '', apellido_materno: '' };
+      if (partes.length === 1) return { nombre: partes[0], apellido_paterno: '', apellido_materno: '' };
+      if (partes.length === 2) return { nombre: partes[0], apellido_paterno: partes[1], apellido_materno: '' };
+      return {
+        nombre: partes.slice(0, -2).join(' '),
+        apellido_paterno: partes[partes.length - 2],
+        apellido_materno: partes[partes.length - 1]
+      };
+    }
+
+    function construirNombreCompleto(nombre, apellidoPaterno, apellidoMaterno) {
+      return [nombre, apellidoPaterno, apellidoMaterno]
+        .map((v) => String(v || '').trim())
+        .filter(Boolean)
+        .join(' ');
+    }
+
     function firstValue(obj, keys) {
       for (const key of keys) {
         const value = obj[key];
@@ -342,9 +363,15 @@
         const clave = firstValue(key, ['hogares con jefas', 'clave_vivienda', 'clave vivienda', 'clave']);
         if (!clave) return;
 
+        const nombreBase = firstValue(key, ['nombre de la jefa', 'nombre', 'jefa de familia']);
+        const apellidoPaternoBase = firstValue(key, ['apellido paterno', 'apellido_paterno', 'primer apellido']);
+        const apellidoMaternoBase = firstValue(key, ['apellido materno', 'apellido_materno', 'segundo apellido']);
+
         nuevoPadron[clave] = {
           clave_vivienda: clave,
-          nombre: firstValue(key, ['nombre de la jefa', 'nombre', 'jefa de familia']),
+          nombre: nombreBase,
+          apellido_paterno: apellidoPaternoBase,
+          apellido_materno: apellidoMaternoBase,
           edad: firstValue(key, ['edad']),
           telefono: firstValue(key, ['telefono', 'teléfono']),
           correo_electronico: firstValue(key, ['correo electronico', 'correo electrónico', 'correo', 'email', 'e-mail']),
@@ -856,6 +883,9 @@
         local_id_anterior: previousItem.local_id,
         local_id_actual: currentItem.local_id,
         nombre_anterior: previousItem.nombre,
+        nombre_base_anterior: previousItem.nombre_base,
+        apellido_paterno_anterior: previousItem.apellido_paterno,
+        apellido_materno_anterior: previousItem.apellido_materno,
         edad_anterior: previousItem.edad,
         telefono_anterior: previousItem.telefono,
         correo_electronico_anterior: previousItem.correo_electronico,
@@ -874,6 +904,9 @@
         coordenadas_gps_anterior: previousItem.coordenadas_gps,
         direccion_base_anterior: previousItem.direccion_base,
         nombre_nuevo: currentItem.nombre,
+        nombre_base_nuevo: currentItem.nombre_base,
+        apellido_paterno_nuevo: currentItem.apellido_paterno,
+        apellido_materno_nuevo: currentItem.apellido_materno,
         edad_nueva: currentItem.edad,
         telefono_nuevo: currentItem.telefono,
         correo_electronico_nuevo: currentItem.correo_electronico,
@@ -918,7 +951,17 @@
       const hit = baseCenso[clave];
       if (!hit) return estado('Clave no encontrada en la base.', false);
 
-      setValor('nombre', hit.nombre);
+      const nombrePartes = (hit.apellido_paterno || hit.apellido_materno)
+        ? {
+            nombre: String(hit.nombre || ''),
+            apellido_paterno: String(hit.apellido_paterno || ''),
+            apellido_materno: String(hit.apellido_materno || '')
+          }
+        : descomponerNombreCompleto(hit.nombre);
+
+      setValor('nombre', nombrePartes.nombre);
+      setValor('apellido_paterno', nombrePartes.apellido_paterno);
+      setValor('apellido_materno', nombrePartes.apellido_materno);
       setValor('edad', hit.edad);
       setValor('telefono', hit.telefono);
       setValor('correo_electronico', hit.correo_electronico);
@@ -1232,6 +1275,11 @@
       if (!ensureAuthenticated()) return;
       const clave = valor('clave_vivienda');
       if (!clave) return estado('La clave vivienda es obligatoria.', false);
+      const nombreBase = valor('nombre');
+      const apellidoPaterno = valor('apellido_paterno');
+      const apellidoMaterno = valor('apellido_materno');
+      const nombreCompleto = construirNombreCompleto(nombreBase, apellidoPaterno, apellidoMaterno);
+      if (!nombreCompleto) return estado('Debes capturar Nombre y apellidos.', false);
       const curp = valor('curp');
       if (!curp) return estado('El CURP es obligatorio para nombrar las fotos.', false);
       const coordenadasGps = valor('coordenadas_gps');
@@ -1248,7 +1296,10 @@
         capturista_nombre: sessionUser.nombre,
         capturista_telefono: sessionUser.telefono,
         clave_vivienda: clave,
-        nombre: valor('nombre'),
+        nombre: nombreCompleto,
+        nombre_base: nombreBase,
+        apellido_paterno: apellidoPaterno,
+        apellido_materno: apellidoMaterno,
         edad: valor('edad') ? Number(valor('edad')) : null,
         telefono: valor('telefono'),
         correo_electronico: valor('correo_electronico'),
@@ -1302,7 +1353,7 @@
     }
 
     function itemsToCsv(items) {
-      const headers = ['local_id','capturista_nombre','capturista_telefono','clave_vivienda','nombre','edad','telefono','correo_electronico','foto_1_path','foto_2_path','foto_3_path','foto_1_kb','foto_2_kb','foto_3_kb','calle','numero','manzana_inegi','manzana','lote','curp','colonia','codigo_postal','descripcion_vivienda','coordenadas_gps','direccion_base','fecha_captura'];
+      const headers = ['local_id','capturista_nombre','capturista_telefono','clave_vivienda','nombre','nombre_base','apellido_paterno','apellido_materno','edad','telefono','correo_electronico','foto_1_path','foto_2_path','foto_3_path','foto_1_kb','foto_2_kb','foto_3_kb','calle','numero','manzana_inegi','manzana','lote','curp','colonia','codigo_postal','descripcion_vivienda','coordenadas_gps','direccion_base','fecha_captura'];
       const lines = [headers.join(',')];
       items.forEach((item) => {
         const line = headers.map((h) => csvEscape(item[h])).join(',');
@@ -1315,8 +1366,8 @@
       const headers = [
         'reemplazo_id','fecha_reemplazo','clave_vivienda','capturista_reemplazo',
         'local_id_anterior','local_id_actual',
-        'nombre_anterior','edad_anterior','telefono_anterior','correo_electronico_anterior','foto_1_path_anterior','foto_2_path_anterior','foto_3_path_anterior','calle_anterior','numero_anterior','manzana_inegi_anterior','manzana_anterior','lote_anterior','curp_anterior','colonia_anterior','codigo_postal_anterior','descripcion_vivienda_anterior','coordenadas_gps_anterior','direccion_base_anterior',
-        'nombre_nuevo','edad_nueva','telefono_nuevo','correo_electronico_nuevo','foto_1_path_nuevo','foto_2_path_nuevo','foto_3_path_nuevo','calle_nueva','numero_nuevo','manzana_inegi_nueva','manzana_nueva','lote_nuevo','curp_nuevo','colonia_nueva','codigo_postal_nueva','descripcion_vivienda_nueva','coordenadas_gps_nueva','direccion_base_nueva'
+        'nombre_anterior','nombre_base_anterior','apellido_paterno_anterior','apellido_materno_anterior','edad_anterior','telefono_anterior','correo_electronico_anterior','foto_1_path_anterior','foto_2_path_anterior','foto_3_path_anterior','calle_anterior','numero_anterior','manzana_inegi_anterior','manzana_anterior','lote_anterior','curp_anterior','colonia_anterior','codigo_postal_anterior','descripcion_vivienda_anterior','coordenadas_gps_anterior','direccion_base_anterior',
+        'nombre_nuevo','nombre_base_nuevo','apellido_paterno_nuevo','apellido_materno_nuevo','edad_nueva','telefono_nuevo','correo_electronico_nuevo','foto_1_path_nuevo','foto_2_path_nuevo','foto_3_path_nuevo','calle_nueva','numero_nuevo','manzana_inegi_nueva','manzana_nueva','lote_nuevo','curp_nuevo','colonia_nueva','codigo_postal_nueva','descripcion_vivienda_nueva','coordenadas_gps_nueva','direccion_base_nueva'
       ];
       const lines = [headers.join(',')];
       items.forEach((item) => {
@@ -1903,6 +1954,9 @@
         capturista_telefono: '',
         clave_vivienda: item.clave_vivienda,
         nombre: item.nombre_nuevo,
+        nombre_base: item.nombre_base_nuevo,
+        apellido_paterno: item.apellido_paterno_nuevo,
+        apellido_materno: item.apellido_materno_nuevo,
         edad: item.edad_nueva,
         telefono: item.telefono_nuevo,
         correo_electronico: item.correo_electronico_nuevo,
@@ -1930,7 +1984,7 @@
       }
 
       const headers = [
-        'estado_sync','local_id','capturista_nombre','capturista_telefono','clave_vivienda','nombre','edad','telefono','correo_electronico','foto_1_path','foto_2_path','foto_3_path',
+        'estado_sync','local_id','capturista_nombre','capturista_telefono','clave_vivienda','nombre','nombre_base','apellido_paterno','apellido_materno','edad','telefono','correo_electronico','foto_1_path','foto_2_path','foto_3_path',
         'calle','numero','manzana_inegi','manzana','lote','curp','colonia','codigo_postal','descripcion_vivienda','coordenadas_gps','direccion_base','fecha_captura'
       ];
 
